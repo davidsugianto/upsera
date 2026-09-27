@@ -11,14 +11,19 @@ import (
 )
 
 const monitorCols = `id, team_id, name, type, config, interval_s, retry_interval_s, retries, timeout_s,
-	paused, group_name, tags, coalesce(push_token, ''), created_at, updated_at`
+	paused, group_name, tags, coalesce(push_token, ''), created_at, updated_at, parent_id, escalation_policy_id,
+	ARRAY(SELECT mc.channel_id FROM upsera.monitor_channels mc WHERE mc.monitor_id = monitors.id ORDER BY mc.channel_id)`
 
 func scanMonitor(row pgx.Row) (model.Monitor, error) {
 	var m model.Monitor
 	err := row.Scan(&m.ID, &m.TeamID, &m.Name, &m.Type, &m.Config, &m.IntervalS, &m.RetryIntervalS, &m.Retries,
-		&m.TimeoutS, &m.Paused, &m.GroupName, &m.Tags, &m.PushToken, &m.CreatedAt, &m.UpdatedAt)
+		&m.TimeoutS, &m.Paused, &m.GroupName, &m.Tags, &m.PushToken, &m.CreatedAt, &m.UpdatedAt,
+		&m.ParentID, &m.EscalationPolicyID, &m.ChannelIDs)
 	if m.Tags == nil {
 		m.Tags = []string{}
+	}
+	if m.ChannelIDs == nil {
+		m.ChannelIDs = []int64{}
 	}
 	return m, mapErr(err)
 }
@@ -44,27 +49,65 @@ func tagsOrEmpty(t []string) []string {
 	return t
 }
 
-// CreateMonitor inserts m and returns the stored row.
+// CreateMonitor inserts m (with its channel links) and returns the stored row.
 func (s *Store) CreateMonitor(ctx context.Context, m model.Monitor) (model.Monitor, error) {
-	return scanMonitor(s.pool.QueryRow(ctx, `
-		INSERT INTO upsera.monitors (team_id, name, type, config, interval_s, retry_interval_s, retries, timeout_s,
-			paused, group_name, tags, push_token)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		RETURNING `+monitorCols,
-		m.TeamID, m.Name, m.Type, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
-		m.Paused, m.GroupName, tagsOrEmpty(m.Tags), nullIfEmpty(m.PushToken)))
+	var out model.Monitor
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		var id int64
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO upsera.monitors (team_id, name, type, config, interval_s, retry_interval_s, retries, timeout_s,
+				paused, group_name, tags, push_token, parent_id, escalation_policy_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			RETURNING id`,
+			m.TeamID, m.Name, m.Type, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
+			m.Paused, m.GroupName, tagsOrEmpty(m.Tags), nullIfEmpty(m.PushToken), m.ParentID, m.EscalationPolicyID,
+		).Scan(&id); err != nil {
+			return err
+		}
+		return finishMonitorWrite(ctx, tx, m.TeamID, id, m.ChannelIDs, &out)
+	})
+	return out, mapErr(err)
 }
 
-// UpdateMonitor replaces the editable fields of monitor m.ID in m.TeamID.
-// The type and push token are immutable.
+// UpdateMonitor replaces the editable fields (and channel links) of monitor
+// m.ID in m.TeamID. The type and push token are immutable.
 func (s *Store) UpdateMonitor(ctx context.Context, m model.Monitor) (model.Monitor, error) {
-	return scanMonitor(s.pool.QueryRow(ctx, `
-		UPDATE upsera.monitors SET name = $3, config = $4, interval_s = $5, retry_interval_s = $6, retries = $7,
-			timeout_s = $8, paused = $9, group_name = $10, tags = $11, updated_at = now()
-		WHERE team_id = $1 AND id = $2
-		RETURNING `+monitorCols,
-		m.TeamID, m.ID, m.Name, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
-		m.Paused, m.GroupName, tagsOrEmpty(m.Tags)))
+	var out model.Monitor
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE upsera.monitors SET name = $3, config = $4, interval_s = $5, retry_interval_s = $6, retries = $7,
+				timeout_s = $8, paused = $9, group_name = $10, tags = $11, parent_id = $12,
+				escalation_policy_id = $13, updated_at = now()
+			WHERE team_id = $1 AND id = $2`,
+			m.TeamID, m.ID, m.Name, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
+			m.Paused, m.GroupName, tagsOrEmpty(m.Tags), m.ParentID, m.EscalationPolicyID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return finishMonitorWrite(ctx, tx, m.TeamID, m.ID, m.ChannelIDs, &out)
+	})
+	return out, mapErr(err)
+}
+
+// finishMonitorWrite replaces monitor id's channel links and re-reads the
+// row into out.
+func finishMonitorWrite(ctx context.Context, tx pgx.Tx, teamID, id int64, channelIDs []int64, out *model.Monitor) error {
+	if _, err := tx.Exec(ctx, "DELETE FROM upsera.monitor_channels WHERE monitor_id = $1", id); err != nil {
+		return err
+	}
+	if len(channelIDs) > 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO upsera.monitor_channels (monitor_id, channel_id)
+			SELECT $1, c FROM unnest($2::bigint[]) AS c ON CONFLICT DO NOTHING`, id, channelIDs); err != nil {
+			return err
+		}
+	}
+	m, err := scanMonitor(tx.QueryRow(ctx, "SELECT "+monitorCols+" FROM upsera.monitors WHERE team_id = $1 AND id = $2", teamID, id))
+	*out = m
+	return err
 }
 
 // DeleteMonitor removes a monitor of teamID and, by cascade, its heartbeats.
@@ -169,13 +212,14 @@ func (s *Store) UpsertMonitorStates(ctx context.Context, states []model.MonitorS
 	b := &pgx.Batch{}
 	for _, st := range states {
 		b.Queue(`
-			INSERT INTO upsera.monitor_state (monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at, updated_at)
-			SELECT $1, $2, $3, $4, $5, $6, now()
+			INSERT INTO upsera.monitor_state (monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at,
+				flap_count, updated_at)
+			SELECT $1, $2, $3, $4, $5, $6, $7, now()
 			WHERE EXISTS (SELECT 1 FROM upsera.monitors WHERE id = $1)
 			ON CONFLICT (monitor_id) DO UPDATE SET status = EXCLUDED.status, since = EXCLUDED.since,
 				last_check_at = EXCLUDED.last_check_at, consecutive_failures = EXCLUDED.consecutive_failures,
-				tls_expires_at = EXCLUDED.tls_expires_at, updated_at = now()`,
-			st.MonitorID, int16(st.Status), st.Since, st.LastCheckAt, st.ConsecutiveFailures, st.TLSExpiresAt)
+				tls_expires_at = EXCLUDED.tls_expires_at, flap_count = EXCLUDED.flap_count, updated_at = now()`,
+			st.MonitorID, int16(st.Status), st.Since, st.LastCheckAt, st.ConsecutiveFailures, st.TLSExpiresAt, st.FlapCount)
 	}
 	return s.pool.SendBatch(ctx, b).Close()
 }
@@ -183,13 +227,15 @@ func (s *Store) UpsertMonitorStates(ctx context.Context, states []model.MonitorS
 // ListMonitorStates returns the persisted state of every monitor.
 func (s *Store) ListMonitorStates(ctx context.Context) ([]model.MonitorState, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at FROM upsera.monitor_state`)
+		SELECT monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at, flap_count
+		FROM upsera.monitor_state`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (model.MonitorState, error) {
 		var st model.MonitorState
-		err := r.Scan(&st.MonitorID, &st.Status, &st.Since, &st.LastCheckAt, &st.ConsecutiveFailures, &st.TLSExpiresAt)
+		err := r.Scan(&st.MonitorID, &st.Status, &st.Since, &st.LastCheckAt, &st.ConsecutiveFailures, &st.TLSExpiresAt,
+			&st.FlapCount)
 		return st, err
 	})
 }

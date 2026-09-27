@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,6 +30,12 @@ type Store interface {
 	Ping(context.Context) error
 }
 
+// Maintenance reports whether a monitor is inside a maintenance window.
+// *maintenance.Registry satisfies this.
+type Maintenance interface {
+	Active(monitorID int64, t time.Time) (name string, ok bool)
+}
+
 // Options configures a Scheduler.
 type Options struct {
 	ProbeID       int64
@@ -36,6 +43,13 @@ type Options struct {
 	BufferSize    int
 	FlushInterval time.Duration
 	Logger        *slog.Logger
+	// Maintenance puts monitors in MAINTENANCE instead of checking them
+	// (nil = never).
+	Maintenance Maintenance
+	// OnTransition receives every state change (and flap start/end), in
+	// order. It is called with the scheduler's lock held, so it must not
+	// block or call back into the scheduler (nil = drop).
+	OnTransition func(model.Transition)
 }
 
 // monitorSlot tracks the currently-running worker goroutine for one
@@ -73,6 +87,8 @@ type Scheduler struct {
 	states   map[int64]model.MonitorState
 	dirty    map[int64]struct{}
 	slots    map[int64]*monitorSlot
+	flaps    map[int64][]time.Time // DOWN/UP change times within flapWindow
+	flapping map[int64]bool
 	stopped  bool
 
 	runCtx context.Context
@@ -127,6 +143,8 @@ func New(st Store, ck Checker, opts Options) *Scheduler {
 		states:   make(map[int64]model.MonitorState),
 		dirty:    make(map[int64]struct{}),
 		slots:    make(map[int64]*monitorSlot),
+		flaps:    make(map[int64][]time.Time),
+		flapping: make(map[int64]bool),
 
 		dbReachable: true,
 
@@ -154,6 +172,13 @@ func (s *Scheduler) Start(ctx context.Context, monitors []model.Monitor, states 
 	s.mu.Lock()
 	for _, st := range states {
 		s.states[st.MonitorID] = st
+		// Only the count is persisted, not the change times: approximate
+		// them with the last check so flapping survives a restart and
+		// decays within flapWindow.
+		if st.FlapCount > 0 {
+			s.flaps[st.MonitorID] = slices.Repeat([]time.Time{st.LastCheckAt}, st.FlapCount)
+		}
+		s.flapping[st.MonitorID] = st.FlapCount >= flapThreshold
 	}
 	s.mu.Unlock()
 
@@ -199,6 +224,7 @@ func (s *Scheduler) upsert(m model.Monitor, jittered bool) {
 	}
 	s.stopSlotLocked(slot)
 	if m.Paused {
+		s.enterPausedMaintenance(m)
 		return
 	}
 
@@ -255,6 +281,8 @@ func (s *Scheduler) Remove(id int64) {
 	delete(s.monitors, id)
 	delete(s.states, id)
 	delete(s.dirty, id)
+	delete(s.flaps, id)
+	delete(s.flapping, id)
 	if hadMonitor && m.PushToken != "" {
 		delete(s.pushIdx, m.PushToken)
 	}
@@ -286,10 +314,16 @@ func (s *Scheduler) Push(token string, status model.Status, msg string, latencyM
 	slot := s.slots[id]
 	s.mu.Unlock()
 
-	if msg == "" {
-		msg = "push received"
+	if name, ok := s.maintenanceActive(id, time.Now()); ok {
+		// The report is ignored during maintenance, but it still proves
+		// the job is alive, so the deadline below is reset.
+		s.recordHeartbeat(id, time.Now(), model.StatusMaintenance, 0, model.TruncateMessage("maintenance: "+name), nil)
+	} else {
+		if msg == "" {
+			msg = "push received"
+		}
+		s.recordHeartbeat(id, time.Now(), status, latencyMs, model.TruncateMessage(msg), nil)
 	}
-	s.recordHeartbeat(id, time.Now(), status, latencyMs, model.TruncateMessage(msg), nil)
 
 	if slot != nil {
 		slot.mu.Lock()

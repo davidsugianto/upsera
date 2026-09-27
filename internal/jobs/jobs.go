@@ -1,5 +1,6 @@
 // Package jobs runs the periodic maintenance tasks: the daily uptime
-// rollup, heartbeat retention pruning and expired-session cleanup.
+// rollup, heartbeat retention pruning, expired-session cleanup and
+// notification log pruning.
 package jobs
 
 import (
@@ -12,12 +13,16 @@ import (
 
 const pruneBatchSize = 10000
 
+// notificationLogRetention is how long notification log entries are kept.
+const notificationLogRetention = 30 * 24 * time.Hour
+
 // Store is the persistence the maintenance job needs. *store.Store
 // satisfies this.
 type Store interface {
 	Rollup(ctx context.Context, tz string) (int64, error)
 	PruneHeartbeats(ctx context.Context, before time.Time, batch int, tz string) (int64, error)
 	DeleteExpiredSessions(ctx context.Context) (int64, error)
+	PruneNotificationLog(ctx context.Context, before time.Time) (int64, error)
 	GetInstanceSettings(ctx context.Context) (model.InstanceSettings, error)
 }
 
@@ -61,7 +66,8 @@ func Run(ctx context.Context, st Store, opts Options) {
 }
 
 // tick runs one pass: load settings, roll up, prune (only if the rollup
-// succeeded) and delete expired sessions, in that order.
+// succeeded), delete expired sessions and prune the notification log, in
+// that order.
 func tick(ctx context.Context, st Store, opts Options, log *slog.Logger) {
 	retentionDays := opts.DefaultRetentionDays
 	settings, err := st.GetInstanceSettings(ctx)
@@ -97,6 +103,13 @@ func tick(ctx context.Context, st Store, opts Options, log *slog.Logger) {
 		log.Warn("jobs: delete expired sessions failed", "error", err)
 	} else {
 		log.Info("jobs: deleted expired sessions", "rows", expired)
+	}
+
+	logs, err := st.PruneNotificationLog(ctx, time.Now().Add(-notificationLogRetention))
+	if err != nil {
+		log.Warn("jobs: prune notification log failed", "error", err)
+	} else {
+		log.Info("jobs: pruned notification log", "rows", logs)
 	}
 }
 

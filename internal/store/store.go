@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
+
+	"github.com/davidsugianto/upsera/internal/secret"
 )
 
 // Schema is the Postgres schema holding every Upsera table.
@@ -28,6 +30,9 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrConflict is returned on unique violations and invariant conflicts.
 	ErrConflict = errors.New("conflict")
+	// ErrInUse is returned when deleting a row another row still depends
+	// on (a channel used by a policy, a policy used by a monitor).
+	ErrInUse = errors.New("in use")
 )
 
 //go:embed migrations/*.sql
@@ -36,7 +41,12 @@ var migrationFS embed.FS
 // Store wraps a pgx connection pool.
 type Store struct {
 	pool *pgxpool.Pool
+	box  *secret.Box // encrypts notification channel configs
 }
+
+// SetSecretBox sets the box used to encrypt and decrypt channel configs.
+// Call it once, before the store is used concurrently.
+func (s *Store) SetSecretBox(b *secret.Box) { s.box = b }
 
 // Open connects to Postgres. maxConns caps the pool (DB_MAX_CONNS).
 func Open(ctx context.Context, databaseURL string, maxConns int32) (*Store, error) {

@@ -119,8 +119,15 @@ type Monitor struct {
 	GroupName      string
 	Tags           []string
 	PushToken      string // only for push monitors; empty otherwise
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// ParentID is the monitor this one depends on: while the parent is
+	// DOWN, this monitor's alerts are suppressed.
+	ParentID           *int64
+	EscalationPolicyID *int64
+	// ChannelIDs are the channels alerted when no escalation policy is
+	// set (empty = the team's default channels). Always sorted.
+	ChannelIDs []int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Monitor field limits, enforced by the API and by table CHECK constraints.
@@ -168,6 +175,8 @@ type MonitorState struct {
 	LastCheckAt         time.Time
 	ConsecutiveFailures int
 	TLSExpiresAt        *time.Time
+	// FlapCount is the number of DOWN/UP state changes in the last hour.
+	FlapCount int
 }
 
 // Role is a user's role within one team.

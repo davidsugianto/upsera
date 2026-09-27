@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/checker"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/scheduler"
+	"github.com/davidsugianto/upsera/internal/store"
 )
 
 type monitorPathInput struct {
@@ -23,16 +25,19 @@ type monitorPathInput struct {
 // monitorRequestBody is shared by create and update: create leaves Type
 // free, update rejects a Type different from the existing monitor.
 type monitorRequestBody struct {
-	Name           string            `json:"name" minLength:"1" maxLength:"100"`
-	Type           model.MonitorType `json:"type"`
-	Config         json.RawMessage   `json:"config"`
-	IntervalS      int               `json:"interval_s,omitempty" default:"60" minimum:"20" maximum:"86400"`
-	RetryIntervalS int               `json:"retry_interval_s,omitempty" default:"20" minimum:"20" maximum:"86400"`
-	Retries        *int              `json:"retries,omitempty" default:"1" minimum:"0" maximum:"10"`
-	TimeoutS       int               `json:"timeout_s,omitempty" default:"10" minimum:"1"`
-	Paused         bool              `json:"paused,omitempty"`
-	GroupName      string            `json:"group_name,omitempty"`
-	Tags           []string          `json:"tags,omitempty" maxItems:"20" minLength:"1" maxLength:"50"`
+	Name               string            `json:"name" minLength:"1" maxLength:"100"`
+	Type               model.MonitorType `json:"type"`
+	Config             json.RawMessage   `json:"config"`
+	IntervalS          int               `json:"interval_s,omitempty" default:"60" minimum:"20" maximum:"86400"`
+	RetryIntervalS     int               `json:"retry_interval_s,omitempty" default:"20" minimum:"20" maximum:"86400"`
+	Retries            *int              `json:"retries,omitempty" default:"1" minimum:"0" maximum:"10"`
+	TimeoutS           int               `json:"timeout_s,omitempty" default:"10" minimum:"1"`
+	Paused             bool              `json:"paused,omitempty"`
+	GroupName          string            `json:"group_name,omitempty"`
+	Tags               []string          `json:"tags,omitempty" maxItems:"20" minLength:"1" maxLength:"50"`
+	ParentID           *int64            `json:"parent_id,omitempty"`
+	EscalationPolicyID *int64            `json:"escalation_policy_id,omitempty"`
+	ChannelIDs         []int64           `json:"channel_ids,omitempty" maxItems:"20"`
 }
 
 type createMonitorInput struct {
@@ -52,32 +57,41 @@ type monitorStateBody struct {
 	LastCheckAt         time.Time    `json:"last_check_at"`
 	ConsecutiveFailures int          `json:"consecutive_failures"`
 	TLSExpiresAt        *time.Time   `json:"tls_expires_at"`
+	FlapCount           int          `json:"flap_count"`
 }
 
 type monitorBody struct {
-	ID             int64             `json:"id"`
-	TeamID         int64             `json:"team_id"`
-	Name           string            `json:"name"`
-	Type           model.MonitorType `json:"type"`
-	Config         json.RawMessage   `json:"config"`
-	IntervalS      int               `json:"interval_s"`
-	RetryIntervalS int               `json:"retry_interval_s"`
-	Retries        int               `json:"retries"`
-	TimeoutS       int               `json:"timeout_s"`
-	Paused         bool              `json:"paused"`
-	GroupName      string            `json:"group_name"`
-	Tags           []string          `json:"tags"`
-	PushURL        string            `json:"push_url,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	State          *monitorStateBody `json:"state"`
+	ID                 int64             `json:"id"`
+	TeamID             int64             `json:"team_id"`
+	Name               string            `json:"name"`
+	Type               model.MonitorType `json:"type"`
+	Config             json.RawMessage   `json:"config"`
+	IntervalS          int               `json:"interval_s"`
+	RetryIntervalS     int               `json:"retry_interval_s"`
+	Retries            int               `json:"retries"`
+	TimeoutS           int               `json:"timeout_s"`
+	Paused             bool              `json:"paused"`
+	GroupName          string            `json:"group_name"`
+	Tags               []string          `json:"tags"`
+	ParentID           *int64            `json:"parent_id"`
+	EscalationPolicyID *int64            `json:"escalation_policy_id"`
+	ChannelIDs         []int64           `json:"channel_ids"`
+	PushURL            string            `json:"push_url,omitempty"`
+	CreatedAt          time.Time         `json:"created_at"`
+	UpdatedAt          time.Time         `json:"updated_at"`
+	State              *monitorStateBody `json:"state"`
 }
 
 func toMonitorBody(d Deps, m model.Monitor) monitorBody {
+	channelIDs := m.ChannelIDs
+	if channelIDs == nil {
+		channelIDs = []int64{}
+	}
 	b := monitorBody{
 		ID: m.ID, TeamID: m.TeamID, Name: m.Name, Type: m.Type, Config: m.Config,
 		IntervalS: m.IntervalS, RetryIntervalS: m.RetryIntervalS, Retries: m.Retries,
 		TimeoutS: m.TimeoutS, Paused: m.Paused, GroupName: m.GroupName, Tags: m.Tags,
+		ParentID: m.ParentID, EscalationPolicyID: m.EscalationPolicyID, ChannelIDs: channelIDs,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 	if m.Type == model.TypePush {
@@ -87,6 +101,7 @@ func toMonitorBody(d Deps, m model.Monitor) monitorBody {
 		b.State = &monitorStateBody{
 			Status: st.Status, Since: st.Since, LastCheckAt: st.LastCheckAt,
 			ConsecutiveFailures: st.ConsecutiveFailures, TLSExpiresAt: st.TLSExpiresAt,
+			FlapCount: st.FlapCount,
 		}
 	}
 	return b
@@ -184,6 +199,57 @@ func validateMonitorBody(in monitorRequestBody) (name string, cfg json.RawMessag
 	return name, cfg, retries, nil
 }
 
+// validateMonitorDeps checks parent_id, escalation_policy_id and
+// channel_ids against teamID. selfID is the monitor being validated (0 for
+// create, where a monitor cannot yet be its own ancestor).
+func validateMonitorDeps(ctx context.Context, d Deps, teamID, selfID int64, parentID, policyID *int64, channelIDs []int64) error {
+	if parentID != nil {
+		id := *parentID
+		reachedRoot := false
+		for hops := range 10 {
+			if id == selfID {
+				return huma.Error422UnprocessableEntity("parent_id would create a cycle")
+			}
+			m, err := d.Store.GetMonitor(ctx, teamID, id)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					if hops == 0 {
+						return huma.Error422UnprocessableEntity("parent_id: monitor not found")
+					}
+					reachedRoot = true
+					break
+				}
+				return mapStoreErr(d, err)
+			}
+			if m.ParentID == nil {
+				reachedRoot = true
+				break
+			}
+			id = *m.ParentID
+		}
+		if !reachedRoot {
+			return huma.Error422UnprocessableEntity("dependency chain too deep")
+		}
+	}
+	if policyID != nil {
+		if _, err := d.Store.GetPolicy(ctx, teamID, *policyID); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return huma.Error422UnprocessableEntity("escalation_policy_id: policy not found")
+			}
+			return mapStoreErr(d, err)
+		}
+	}
+	for _, id := range channelIDs {
+		if _, err := d.Store.GetChannel(ctx, teamID, id); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return huma.Error422UnprocessableEntity(fmt.Sprintf("channel_ids: channel %d not found", id))
+			}
+			return mapStoreErr(d, err)
+		}
+	}
+	return nil
+}
+
 func registerMonitorRoutes(api huma.API, d Deps) {
 	huma.Get(api, "/api/teams/{teamID}/monitors", func(ctx context.Context, in *teamPathInput) (*listMonitorsOutput, error) {
 		if _, err := authorizeTeam(ctx, d, in.TeamID, model.RoleViewer); err != nil {
@@ -210,10 +276,14 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateMonitorDeps(ctx, d, in.TeamID, 0, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
+			return nil, err
+		}
 		m := model.Monitor{
 			TeamID: in.TeamID, Name: name, Type: in.Body.Type, Config: cfg,
 			IntervalS: in.Body.IntervalS, RetryIntervalS: in.Body.RetryIntervalS, Retries: retries,
 			TimeoutS: in.Body.TimeoutS, Paused: in.Body.Paused, GroupName: in.Body.GroupName, Tags: in.Body.Tags,
+			ParentID: in.Body.ParentID, EscalationPolicyID: in.Body.EscalationPolicyID, ChannelIDs: in.Body.ChannelIDs,
 		}
 		if in.Body.Type == model.TypePush {
 			token, err := newPushToken()
@@ -228,6 +298,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			return nil, mapStoreErr(d, err)
 		}
 		d.Runner.Upsert(created)
+		d.Alerting.UpsertMonitor(created)
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.create", "monitor", &created.ID,
 			map[string]any{"name": created.Name, "type": created.Type})
 		return &monitorOutput{Body: toMonitorBody(d, created)}, nil
@@ -263,16 +334,21 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		if err != nil {
 			return nil, err
 		}
+		if err := validateMonitorDeps(ctx, d, in.TeamID, in.MonitorID, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
+			return nil, err
+		}
 		m := model.Monitor{
 			ID: in.MonitorID, TeamID: in.TeamID, Name: name, Type: existing.Type, Config: cfg,
 			IntervalS: in.Body.IntervalS, RetryIntervalS: in.Body.RetryIntervalS, Retries: retries,
 			TimeoutS: in.Body.TimeoutS, Paused: in.Body.Paused, GroupName: in.Body.GroupName, Tags: in.Body.Tags,
+			ParentID: in.Body.ParentID, EscalationPolicyID: in.Body.EscalationPolicyID, ChannelIDs: in.Body.ChannelIDs,
 		}
 		updated, err := d.Store.UpdateMonitor(ctx, m)
 		if err != nil {
 			return nil, mapStoreErr(d, err)
 		}
 		d.Runner.Upsert(updated)
+		d.Alerting.UpsertMonitor(updated)
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.update", "monitor", &updated.ID, map[string]any{"name": updated.Name})
 		return &monitorOutput{Body: toMonitorBody(d, updated)}, nil
 	})
@@ -286,6 +362,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			return nil, mapStoreErr(d, err)
 		}
 		d.Runner.Remove(in.MonitorID)
+		d.Alerting.RemoveMonitor(in.MonitorID)
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.delete", "monitor", &in.MonitorID, nil)
 		return nil, nil
 	})

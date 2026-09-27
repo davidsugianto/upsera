@@ -159,3 +159,11 @@ func (f *fakeChecker) times() []time.Time {
 	copy(out, f.callTimes)
 	return out
 }
+
+// cacheMonitor puts m in the scheduler's cache without starting a check
+// loop, so tests can drive recordHeartbeat directly.
+func cacheMonitor(s *Scheduler, m model.Monitor) {
+	s.mu.Lock()
+	s.monitors[m.ID] = m
+	s.mu.Unlock()
+}

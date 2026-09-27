@@ -2,8 +2,10 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davidsugianto/upsera/internal/alerting"
 	"github.com/davidsugianto/upsera/internal/api"
 	"github.com/davidsugianto/upsera/internal/config"
 	"github.com/davidsugianto/upsera/internal/model"
@@ -99,20 +102,162 @@ func (f *fakeRunner) counts() (upserts, removes int) {
 	return f.upsertCalls, f.removeCalls
 }
 
+// fakeAlerting is a minimal in-memory stand-in for the alerting engine,
+// matching api.Alerting exactly. Acknowledge only knows about alerts
+// seeded via seedAlert, mirroring the engine returning ErrAlertNotFound
+// for anything it hasn't loaded.
+type fakeAlerting struct {
+	mu             sync.Mutex
+	upsertMonitors []model.Monitor
+	removeMonitors []int64
+	upsertChannels []model.Channel
+	removeChannels []int64
+	upsertPolicies []model.EscalationPolicy
+	removePolicies []int64
+	alerts         map[string]model.Alert
+	testSendCh     model.Channel
+	testSendCalls  int
+	testSendErr    error
+}
+
+func newFakeAlerting() *fakeAlerting {
+	return &fakeAlerting{alerts: map[string]model.Alert{}}
+}
+
+func (f *fakeAlerting) UpsertMonitor(m model.Monitor) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upsertMonitors = append(f.upsertMonitors, m)
+}
+
+func (f *fakeAlerting) RemoveMonitor(id int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removeMonitors = append(f.removeMonitors, id)
+}
+
+func (f *fakeAlerting) UpsertChannel(c model.Channel) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upsertChannels = append(f.upsertChannels, c)
+}
+
+func (f *fakeAlerting) RemoveChannel(id int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removeChannels = append(f.removeChannels, id)
+}
+
+func (f *fakeAlerting) UpsertPolicy(p model.EscalationPolicy) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upsertPolicies = append(f.upsertPolicies, p)
+}
+
+func (f *fakeAlerting) RemovePolicy(id int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removePolicies = append(f.removePolicies, id)
+}
+
+func (f *fakeAlerting) seedAlert(a model.Alert) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.alerts[a.ID] = a
+}
+
+func (f *fakeAlerting) Acknowledge(teamID int64, alertID string, by model.AckBy) (model.Alert, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.alerts[alertID]
+	if !ok || (teamID != 0 && a.TeamID != teamID) {
+		return model.Alert{}, alerting.ErrAlertNotFound
+	}
+	if a.ResolvedAt != nil {
+		return model.Alert{}, alerting.ErrAlertResolved
+	}
+	now := time.Now()
+	a.AckedAt = &now
+	a.AckedByUserID = by.UserID
+	a.AckSource = by.Source
+	a.AckedByName = by.Name
+	f.alerts[alertID] = a
+	return a, nil
+}
+
+func (f *fakeAlerting) TestSend(ctx context.Context, ch model.Channel) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.testSendCh = ch
+	f.testSendCalls++
+	return f.testSendErr
+}
+
+func (f *fakeAlerting) setTestSendErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.testSendErr = err
+}
+
+func (f *fakeAlerting) lastTestSend() (model.Channel, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.testSendCh, f.testSendCalls
+}
+
+func (f *fakeAlerting) monitorCounts() (upserts, removes int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.upsertMonitors), len(f.removeMonitors)
+}
+
+// fakeMaintenance is a minimal in-memory stand-in for the maintenance
+// registry, matching api.MaintenanceRegistry exactly.
+type fakeMaintenance struct {
+	mu      sync.Mutex
+	upserts []model.MaintenanceWindow
+	removes []int64
+}
+
+func newFakeMaintenance() *fakeMaintenance { return &fakeMaintenance{} }
+
+func (f *fakeMaintenance) Upsert(w model.MaintenanceWindow) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upserts = append(f.upserts, w)
+}
+
+func (f *fakeMaintenance) Remove(id int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removes = append(f.removes, id)
+}
+
+func (f *fakeMaintenance) counts() (upserts, removes int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.upserts), len(f.removes)
+}
+
 // newTestServer starts one httptest server backed by a real Postgres
 // container and a fake scheduler.
-func newTestServer(t *testing.T) (base string, runner *fakeRunner, policy *netpolicy.Policy) {
+func newTestServer(t *testing.T) (base string, runner *fakeRunner, policy *netpolicy.Policy, alerts *fakeAlerting, maint *fakeMaintenance) {
 	t.Helper()
 	st, _ := testutil.Store(t)
 	runner = newFakeRunner()
 	runner.health = scheduler.Health{DBReachable: true, BufferedHeartbeats: 3, DroppedHeartbeats: 1}
 	policy = netpolicy.New("")
+	alerts = newFakeAlerting()
+	maint = newFakeMaintenance()
 	cfg := config.Config{BaseURL: "http://upsera.test", Port: 3080}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := api.NewRouter(api.Deps{Store: st, Runner: runner, Policy: policy, Config: cfg, Logger: logger, Version: "test"})
+	h := api.NewRouter(api.Deps{
+		Store: st, Runner: runner, Alerting: alerts, Maintenance: maint,
+		Policy: policy, Config: cfg, Logger: logger, Version: "test",
+	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv.URL, runner, policy
+	return srv.URL, runner, policy, alerts, maint
 }
 
 func newClient(t *testing.T) *http.Client {
@@ -212,7 +357,7 @@ type monitorResponse struct {
 }
 
 func TestAPI(t *testing.T) {
-	base, runner, policy := newTestServer(t)
+	base, runner, policy, alertingFake, maintFake := newTestServer(t)
 	admin := newClient(t)
 
 	// --- setup ---
@@ -366,6 +511,9 @@ func TestAPI(t *testing.T) {
 	if upsertsAfter != upsertsBefore+1 {
 		t.Fatalf("Runner.Upsert not called on create: before=%d after=%d", upsertsBefore, upsertsAfter)
 	}
+	if alertUpserts, _ := alertingFake.monitorCounts(); alertUpserts != 1 {
+		t.Fatalf("Alerting.UpsertMonitor not called on create: got %d", alertUpserts)
+	}
 
 	monitorURL := fmt.Sprintf("%s/%d", monitorsURL, created.ID)
 
@@ -386,6 +534,9 @@ func TestAPI(t *testing.T) {
 	if updated.Name != "example tcp renamed" || updated.IntervalS != 90 {
 		t.Fatalf("update did not apply: %+v", updated)
 	}
+	if alertUpserts, _ := alertingFake.monitorCounts(); alertUpserts != 2 {
+		t.Fatalf("Alerting.UpsertMonitor not called on update: got %d", alertUpserts)
+	}
 
 	resp, body = do(t, admin, http.MethodGet, monitorURL, "", "", nil)
 	requireStatus(t, resp, http.StatusOK, body)
@@ -395,6 +546,9 @@ func TestAPI(t *testing.T) {
 	requireStatus(t, resp, http.StatusNoContent, body)
 	if runner.removeCalls != removesBefore+1 {
 		t.Fatalf("Runner.Remove not called on delete")
+	}
+	if _, alertRemoves := alertingFake.monitorCounts(); alertRemoves != 1 {
+		t.Fatalf("Alerting.RemoveMonitor not called on delete: got %d", alertRemoves)
 	}
 
 	t.Run("audit entries recorded for monitor create", func(t *testing.T) {
@@ -511,6 +665,204 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
+	t.Run("channels", func(t *testing.T) {
+		channelsURL := fmt.Sprintf("%s/api/teams/%d/channels", base, teamID)
+		const realToken = "123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+		resp, body := do(t, admin, http.MethodPost, channelsURL, adminCSRF, "", map[string]any{
+			"type": "telegram", "name": "ops telegram",
+			"config": map[string]any{"bot_token": realToken, "chat_id": "42"},
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		channelID := int64(body["id"].(float64))
+		if cfg, _ := body["config"].(map[string]any); cfg["bot_token"] != "********" {
+			t.Fatalf("bot_token not redacted on create: %v", cfg)
+		}
+		channelURL := fmt.Sprintf("%s/%d", channelsURL, channelID)
+
+		resp, body = do(t, admin, http.MethodGet, channelURL, "", "", nil)
+		requireStatus(t, resp, http.StatusOK, body)
+		if cfg, _ := body["config"].(map[string]any); cfg["bot_token"] != "********" {
+			t.Fatalf("bot_token not redacted on get: %v", cfg)
+		}
+
+		resp, body = do(t, admin, http.MethodPut, channelURL, adminCSRF, "", map[string]any{
+			"type": "telegram", "name": "ops telegram renamed",
+			"config": map[string]any{"bot_token": "********", "chat_id": "42"},
+		})
+		requireStatus(t, resp, http.StatusOK, body)
+		if body["name"] != "ops telegram renamed" {
+			t.Fatalf("update did not apply: %v", body)
+		}
+
+		resp, body = do(t, admin, http.MethodPost, channelURL+"/test", adminCSRF, "", nil)
+		requireStatus(t, resp, http.StatusOK, body)
+		sentCh, calls := alertingFake.lastTestSend()
+		if calls != 1 {
+			t.Fatalf("TestSend calls = %d, want 1", calls)
+		}
+		var sentCfg struct {
+			BotToken string `json:"bot_token"`
+		}
+		if err := json.Unmarshal(sentCh.Config, &sentCfg); err != nil {
+			t.Fatal(err)
+		}
+		if sentCfg.BotToken != realToken {
+			t.Fatalf("test-send did not receive the real token after a %q PUT: got %q", "********", sentCfg.BotToken)
+		}
+
+		resp, body = do(t, admin, http.MethodPut, channelURL, adminCSRF, "", map[string]any{
+			"type": "discord", "name": "ops telegram renamed", "config": map[string]any{"bot_token": "********", "chat_id": "42"},
+		})
+		requireStatus(t, resp, http.StatusUnprocessableEntity, body)
+
+		alertingFake.setTestSendErr(errors.New("boom"))
+		resp, body = do(t, admin, http.MethodPost, channelURL+"/test", adminCSRF, "", nil)
+		requireStatus(t, resp, http.StatusBadGateway, body)
+		alertingFake.setTestSendErr(nil)
+
+		t.Run("escalation policies", func(t *testing.T) {
+			policiesURL := fmt.Sprintf("%s/api/teams/%d/escalation-policies", base, teamID)
+			resp, body := do(t, admin, http.MethodPost, policiesURL, adminCSRF, "", map[string]any{
+				"name":  "primary",
+				"steps": []map[string]any{{"channel_ids": []int64{channelID}, "delay_s": 60}},
+			})
+			requireStatus(t, resp, http.StatusCreated, body)
+			policyID := int64(body["id"].(float64))
+			policyURL := fmt.Sprintf("%s/%d", policiesURL, policyID)
+
+			resp, body = do(t, admin, http.MethodGet, policyURL, "", "", nil)
+			requireStatus(t, resp, http.StatusOK, body)
+
+			resp, body = do(t, admin, http.MethodPut, policyURL, adminCSRF, "", map[string]any{
+				"name":  "primary renamed",
+				"steps": []map[string]any{{"channel_ids": []int64{channelID}, "delay_s": 120}},
+			})
+			requireStatus(t, resp, http.StatusOK, body)
+			if body["name"] != "primary renamed" {
+				t.Fatalf("update did not apply: %v", body)
+			}
+
+			resp, body = do(t, admin, http.MethodPost, policiesURL, adminCSRF, "", map[string]any{
+				"name":  "bad channel",
+				"steps": []map[string]any{{"channel_ids": []int64{999999}, "delay_s": 60}},
+			})
+			requireStatus(t, resp, http.StatusUnprocessableEntity, body)
+
+			t.Run("delete channel used by policy is conflict", func(t *testing.T) {
+				resp, body := do(t, admin, http.MethodDelete, channelURL, adminCSRF, "", nil)
+				requireStatus(t, resp, http.StatusConflict, body)
+				if body["detail"] != "channel is used by an escalation policy" {
+					t.Fatalf("detail = %v", body["detail"])
+				}
+			})
+
+			resp, body = do(t, admin, http.MethodDelete, policyURL, adminCSRF, "", nil)
+			requireStatus(t, resp, http.StatusNoContent, body)
+		})
+	})
+
+	t.Run("monitor dependency validation", func(t *testing.T) {
+		resp, body := do(t, admin, http.MethodPost, monitorsURL, adminCSRF, "", map[string]any{
+			"name": "dep a", "type": "tcp", "config": map[string]any{"host": "example.com", "port": 443},
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		aID := int64(body["id"].(float64))
+
+		resp, body = do(t, admin, http.MethodPost, monitorsURL, adminCSRF, "", map[string]any{
+			"name": "dep b", "type": "tcp", "config": map[string]any{"host": "example.com", "port": 443},
+			"parent_id": aID,
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		bID := int64(body["id"].(float64))
+
+		// A -> B would create a cycle, since B already depends on A.
+		resp, body = do(t, admin, http.MethodPut, fmt.Sprintf("%s/%d", monitorsURL, aID), adminCSRF, "", map[string]any{
+			"name": "dep a", "type": "tcp", "config": map[string]any{"host": "example.com", "port": 443},
+			"parent_id": bID,
+		})
+		requireStatus(t, resp, http.StatusUnprocessableEntity, body)
+		if body["detail"] != "parent_id would create a cycle" {
+			t.Fatalf("detail = %v", body["detail"])
+		}
+
+		resp, body = do(t, admin, http.MethodPost, fmt.Sprintf("%s/api/teams/%d/channels", base, secondTeamID), adminCSRF, "", map[string]any{
+			"type": "webhook", "name": "other team channel",
+			"config": map[string]any{"url": "https://example.com/hook", "headers": map[string]any{}},
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		otherTeamChannelID := int64(body["id"].(float64))
+
+		resp, body = do(t, admin, http.MethodPost, monitorsURL, adminCSRF, "", map[string]any{
+			"name": "bad channel ref", "type": "tcp", "config": map[string]any{"host": "example.com", "port": 443},
+			"channel_ids": []int64{otherTeamChannelID},
+		})
+		requireStatus(t, resp, http.StatusUnprocessableEntity, body)
+		if want := fmt.Sprintf("channel_ids: channel %d not found", otherTeamChannelID); body["detail"] != want {
+			t.Fatalf("detail = %q, want %q", body["detail"], want)
+		}
+	})
+
+	t.Run("alerts", func(t *testing.T) {
+		resp, body := do(t, admin, http.MethodGet, fmt.Sprintf("%s/api/teams/%d/alerts", base, teamID), "", "", nil)
+		requireStatus(t, resp, http.StatusOK, body)
+		if _, ok := body["alerts"]; !ok {
+			t.Fatalf("alerts list missing alerts field: %v", body)
+		}
+
+		resp, body = do(t, admin, http.MethodPost,
+			fmt.Sprintf("%s/api/teams/%d/alerts/%s/acknowledge", base, teamID, "00000000-0000-0000-0000-000000000000"),
+			adminCSRF, "", nil)
+		requireStatus(t, resp, http.StatusNotFound, body)
+
+		resolvedID := "01900000-0000-7000-8000-000000000001"
+		alertingFake.seedAlert(model.Alert{ID: resolvedID, TeamID: teamID, ResolvedAt: new(time.Now())})
+		resp, body = do(t, admin, http.MethodPost,
+			fmt.Sprintf("%s/api/teams/%d/alerts/%s/acknowledge", base, teamID, resolvedID), adminCSRF, "", nil)
+		requireStatus(t, resp, http.StatusConflict, body)
+		if body["detail"] != "alert is resolved" {
+			t.Fatalf("detail = %v", body["detail"])
+		}
+	})
+
+	t.Run("maintenance windows", func(t *testing.T) {
+		windowsURL := fmt.Sprintf("%s/api/teams/%d/maintenance-windows", base, teamID)
+
+		resp, body := do(t, admin, http.MethodPost, monitorsURL, adminCSRF, "", map[string]any{
+			"name": "maint target", "type": "tcp", "config": map[string]any{"host": "example.com", "port": 443},
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		monID := int64(body["id"].(float64))
+
+		start := time.Now().Add(time.Hour).UTC()
+		resp, body = do(t, admin, http.MethodPost, windowsURL, adminCSRF, "", map[string]any{
+			"name": "too long daily", "starts_at": start.Format(time.RFC3339), "ends_at": start.Add(48 * time.Hour).Format(time.RFC3339),
+			"recurrence": "daily", "monitor_ids": []int64{monID},
+		})
+		requireStatus(t, resp, http.StatusUnprocessableEntity, body)
+		if body["detail"] != "window is longer than its recurrence period" {
+			t.Fatalf("detail = %v", body["detail"])
+		}
+
+		upsertsBefore, removesBefore := maintFake.counts()
+		resp, body = do(t, admin, http.MethodPost, windowsURL, adminCSRF, "", map[string]any{
+			"name": "weekly maintenance", "starts_at": start.Format(time.RFC3339), "ends_at": start.Add(2 * time.Hour).Format(time.RFC3339),
+			"recurrence": "weekly", "monitor_ids": []int64{monID},
+		})
+		requireStatus(t, resp, http.StatusCreated, body)
+		windowID := int64(body["id"].(float64))
+		if upserts, _ := maintFake.counts(); upserts != upsertsBefore+1 {
+			t.Fatalf("Maintenance.Upsert not called on create: before=%d after=%d", upsertsBefore, upserts)
+		}
+
+		windowURL := fmt.Sprintf("%s/%d", windowsURL, windowID)
+		resp, body = do(t, admin, http.MethodDelete, windowURL, adminCSRF, "", nil)
+		requireStatus(t, resp, http.StatusNoContent, body)
+		if _, removes := maintFake.counts(); removes != removesBefore+1 {
+			t.Fatalf("Maintenance.Remove not called on delete: before=%d after=%d", removesBefore, removes)
+		}
+	})
+
 	t.Run("openapi document", func(t *testing.T) {
 		resp, err := http.Get(base + "/api/openapi.json")
 		if err != nil {
@@ -608,7 +960,7 @@ func TestAuthMiddlewareDBOutage(t *testing.T) {
 // and an invalid UTF-8 byte reaches the runner already sanitized, so it can
 // never fail to persist as heartbeat text.
 func TestPushSanitizesMessage(t *testing.T) {
-	base, runner, _ := newTestServer(t)
+	base, runner, _, _, _ := newTestServer(t)
 	admin := newClient(t)
 
 	resp, body := do(t, admin, http.MethodPost, base+"/api/setup", "", "", map[string]any{
@@ -647,7 +999,7 @@ func TestPushSanitizesMessage(t *testing.T) {
 // generated spec actually reflects their enum values (huma could stop
 // honoring SchemaProvider, or a field could lose its type, without this).
 func TestOpenAPIEnums(t *testing.T) {
-	base, _, _ := newTestServer(t)
+	base, _, _, _, _ := newTestServer(t)
 
 	resp, err := http.Get(base + "/api/openapi.json")
 	if err != nil {
@@ -684,6 +1036,36 @@ func TestOpenAPIEnums(t *testing.T) {
 		return got
 	}
 
+	paramEnum := func(path, method, paramName string) []string {
+		t.Helper()
+		p, ok := spec["paths"].(map[string]any)[path].(map[string]any)
+		if !ok {
+			t.Fatalf("no path %q in spec", path)
+		}
+		op, ok := p[method].(map[string]any)
+		if !ok {
+			t.Fatalf("no method %q on path %q", method, path)
+		}
+		for _, raw := range op["parameters"].([]any) {
+			param, _ := raw.(map[string]any)
+			if param["name"] != paramName {
+				continue
+			}
+			schema, _ := param["schema"].(map[string]any)
+			rawEnum, ok := schema["enum"].([]any)
+			if !ok {
+				t.Fatalf("%s %s param %q has no enum", method, path, paramName)
+			}
+			got := make([]string, len(rawEnum))
+			for i, v := range rawEnum {
+				got[i] = v.(string)
+			}
+			return got
+		}
+		t.Fatalf("no param %q on %s %s", paramName, method, path)
+		return nil
+	}
+
 	wantTypes := make([]string, len(model.MonitorTypes))
 	for i, mt := range model.MonitorTypes {
 		wantTypes[i] = string(mt)
@@ -707,6 +1089,35 @@ func TestOpenAPIEnums(t *testing.T) {
 	wantScopes := []string{string(model.ScopeRead), string(model.ScopeWrite)}
 	if got := schemaEnum("CreateTokenInputBody", "scope"); !slicesEqual(got, wantScopes) {
 		t.Fatalf("CreateTokenInputBody.scope enum = %v, want %v", got, wantScopes)
+	}
+
+	wantChannelTypes := make([]string, len(model.ChannelTypes))
+	for i, ct := range model.ChannelTypes {
+		wantChannelTypes[i] = string(ct)
+	}
+	if got := schemaEnum("ChannelBody", "type"); !slicesEqual(got, wantChannelTypes) {
+		t.Fatalf("ChannelBody.type enum = %v, want %v", got, wantChannelTypes)
+	}
+
+	wantRecurrences := make([]string, len(model.Recurrences))
+	for i, r := range model.Recurrences {
+		wantRecurrences[i] = string(r)
+	}
+	if got := schemaEnum("MaintenanceWindowBody", "recurrence"); !slicesEqual(got, wantRecurrences) {
+		t.Fatalf("MaintenanceWindowBody.recurrence enum = %v, want %v", got, wantRecurrences)
+	}
+
+	wantAckSources := make([]string, len(model.AckSources))
+	for i, s := range model.AckSources {
+		wantAckSources[i] = string(s)
+	}
+	if got := schemaEnum("AlertBody", "ack_source"); !slicesEqual(got, wantAckSources) {
+		t.Fatalf("AlertBody.ack_source enum = %v, want %v", got, wantAckSources)
+	}
+
+	wantAlertStates := []string{"open", "resolved", "all"}
+	if got := paramEnum("/api/teams/{teamID}/alerts", "get", "state"); !slicesEqual(got, wantAlertStates) {
+		t.Fatalf("alerts state query enum = %v, want %v", got, wantAlertStates)
 	}
 }
 

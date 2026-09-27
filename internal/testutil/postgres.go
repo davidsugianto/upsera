@@ -13,6 +13,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/davidsugianto/upsera/internal/secret"
 	"github.com/davidsugianto/upsera/internal/store"
 )
 
@@ -57,6 +58,11 @@ func Store(t testing.TB) (*store.Store, string) {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(st.Close)
+	box, err := secret.New("test-app-secret-test-app-secret-0123")
+	if err != nil {
+		t.Fatalf("secret box: %v", err)
+	}
+	st.SetSecretBox(box)
 	if err := st.Migrate(ctx, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

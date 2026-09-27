@@ -28,6 +28,8 @@ type Config struct {
 	MaxConcurrentChecks int    // MAX_CONCURRENT_CHECKS, default 100
 	DockerHost          string // DOCKER_HOST, e.g. tcp://docker-proxy:2375
 	TimeZone            string // TZ (IANA name), default UTC; used for daily rollup days
+	TelegramAPIURL      string // TELEGRAM_API_URL, default https://api.telegram.org
+	SlackAPIURL         string // SLACK_API_URL, default https://slack.com/api
 
 	FlushInterval time.Duration // HEARTBEAT_FLUSH_INTERVAL, default 1s
 	RollupEvery   time.Duration // ROLLUP_INTERVAL, default 1h
@@ -101,6 +103,15 @@ func load(getenv func(string) string) (Config, error) {
 		c.BaseURL = fmt.Sprintf("http://localhost:%d", c.Port)
 	} else if u, err := url.Parse(c.BaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		errs = append(errs, fmt.Errorf("BASE_URL must be an absolute http(s) URL, got %q", c.BaseURL))
+	}
+
+	c.TelegramAPIURL = strings.TrimRight(orDefault(getenv("TELEGRAM_API_URL"), "https://api.telegram.org"), "/")
+	if u, err := url.Parse(c.TelegramAPIURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		errs = append(errs, fmt.Errorf("TELEGRAM_API_URL must be an absolute http(s) URL, got %q", c.TelegramAPIURL))
+	}
+	c.SlackAPIURL = strings.TrimRight(orDefault(getenv("SLACK_API_URL"), "https://slack.com/api"), "/")
+	if u, err := url.Parse(c.SlackAPIURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		errs = append(errs, fmt.Errorf("SLACK_API_URL must be an absolute http(s) URL, got %q", c.SlackAPIURL))
 	}
 	return c, errors.Join(errs...)
 }

@@ -6,16 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
-	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/davidsugianto/upsera/internal/config"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/store"
 	"github.com/davidsugianto/upsera/internal/testutil"
@@ -32,57 +28,15 @@ func TestPhase1DoneWhen(t *testing.T) {
 	}))
 	defer target.Close()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := "http://" + ln.Addr().String()
-	cfg := config.Config{
-		DatabaseURL: dbURL, AppSecret: strings.Repeat("s", 32), BaseURL: base,
-		Port: ln.Addr().(*net.TCPAddr).Port, LogFormat: "text",
-		DBMaxConns: 5, HeartbeatBufferSize: 1000, RetentionDays: 14, MaxConcurrentChecks: 10,
-		FlushInterval: 200 * time.Millisecond, RollupEvery: time.Hour, TimeZone: "UTC",
-	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runErr := make(chan error, 1)
-	go func() { runErr <- run(ctx, cfg, log, ln) }()
-
-	waitFor(t, 60*time.Second, func() bool {
-		resp, err := http.Get(base + "/healthz")
-		if err != nil {
-			return false
-		}
-		resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	})
-	if code := healthcheck(fmt.Sprint(cfg.Port)); code != 0 {
+	base, stop := startServer(t, dbURL, nil)
+	port := strings.TrimPrefix(base, "http://127.0.0.1:")
+	if code := healthcheck(port); code != 0 {
 		t.Fatalf("healthcheck subcommand exit code %d", code)
 	}
 
 	// First-run setup logs the admin in; use the session to mint a write
 	// token, then drive monitors the way automation would.
-	jar, _ := cookiejar.New(nil)
-	browser := &http.Client{Jar: jar}
-	var me struct {
-		Teams []struct {
-			ID int64 `json:"id"`
-		} `json:"teams"`
-		CSRFToken string `json:"csrf_token"`
-	}
-	call(t, browser, "POST", base+"/api/setup", "", map[string]any{
-		"email": "admin@example.com", "name": "Admin", "password": "correct horse battery", "team_name": "Ops",
-	}, http.StatusCreated, &me)
-	teamURL := fmt.Sprintf("%s/api/teams/%d", base, me.Teams[0].ID)
-
-	var tok struct {
-		Token string `json:"token"`
-	}
-	req := map[string]any{"name": "ci", "scope": "write"}
-	callCSRF(t, browser, "POST", teamURL+"/tokens", me.CSRFToken, req, &tok)
-	bearer := "Bearer " + tok.Token
+	teamURL, bearer := setupAdmin(t, base)
 
 	type monitor struct {
 		ID      int64  `json:"id"`
@@ -122,14 +76,8 @@ func TestPhase1DoneWhen(t *testing.T) {
 
 	// A push right before shutdown must still be persisted by the final flush.
 	call(t, http.DefaultClient, "POST", pushMon.PushURL+"?status=down&msg=disk+full", "", nil, http.StatusOK, nil)
-	cancel()
-	select {
-	case err := <-runErr:
-		if err != nil {
-			t.Fatalf("run returned %v", err)
-		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("server did not shut down")
+	if err := stop(); err != nil {
+		t.Fatalf("run returned %v", err)
 	}
 
 	st, err := store.Open(context.Background(), dbURL, 2)
@@ -141,7 +89,9 @@ func TestPhase1DoneWhen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hbs) == 0 || hbs[0].Status != model.StatusDown || hbs[0].Message != "disk full" {
+	// Heartbeats store the resulting state: with the default retries (1)
+	// a first failure is PENDING.
+	if len(hbs) == 0 || hbs[0].Status != model.StatusPending || hbs[0].Message != "disk full" {
 		t.Fatalf("last push not flushed on shutdown: %+v", hbs)
 	}
 }

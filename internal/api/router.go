@@ -40,14 +40,37 @@ type Runner interface {
 	Health() scheduler.Health
 }
 
+// Alerting is the subset of the alerting engine the API needs: keeping its
+// in-memory caches of monitors, channels and escalation policies in sync
+// with the store, acknowledging alerts and sending test notifications.
+type Alerting interface {
+	UpsertMonitor(model.Monitor)
+	RemoveMonitor(int64)
+	UpsertChannel(model.Channel)
+	RemoveChannel(int64)
+	UpsertPolicy(model.EscalationPolicy)
+	RemovePolicy(int64)
+	Acknowledge(teamID int64, alertID string, by model.AckBy) (model.Alert, error)
+	TestSend(ctx context.Context, ch model.Channel) error
+}
+
+// MaintenanceRegistry is the subset of the maintenance window registry the
+// API needs to keep in sync with the store.
+type MaintenanceRegistry interface {
+	Upsert(model.MaintenanceWindow)
+	Remove(int64)
+}
+
 // Deps are the router's dependencies.
 type Deps struct {
-	Store   *store.Store
-	Runner  Runner
-	Policy  *netpolicy.Policy
-	Config  config.Config
-	Logger  *slog.Logger
-	Version string
+	Store       *store.Store
+	Runner      Runner
+	Alerting    Alerting
+	Maintenance MaintenanceRegistry
+	Policy      *netpolicy.Policy
+	Config      config.Config
+	Logger      *slog.Logger
+	Version     string
 }
 
 const (
@@ -151,6 +174,10 @@ func NewRouter(d Deps) http.Handler {
 	registerAdminRoutes(api, d)
 	registerTeamRoutes(api, d)
 	registerMonitorRoutes(api, d)
+	registerChannelRoutes(api, d)
+	registerPolicyRoutes(api, d)
+	registerAlertRoutes(api, d)
+	registerMaintenanceRoutes(api, d)
 	registerAuditRoutes(api, d)
 	registerPushRoutes(api, d)
 
@@ -319,6 +346,8 @@ func mapStoreErr(d Deps, err error) error {
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, store.ErrSetupDone):
 		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, store.ErrInUse):
+		return huma.Error409Conflict("in use")
 	default:
 		d.Logger.Error("internal error", "error", err)
 		return huma.Error500InternalServerError("internal error")

@@ -262,7 +262,7 @@ func TestSchedulerFlusherRequeuesOnFailureAndRecovers(t *testing.T) {
 		t.Fatalf("expected DBReachable=true initially")
 	}
 
-	sched.Upsert(model.Monitor{ID: 1, Type: model.TypeHTTP, IntervalS: 20, RetryIntervalS: 20, Retries: 1, Paused: true})
+	cacheMonitor(sched, model.Monitor{ID: 1, Type: model.TypeHTTP, IntervalS: 20, RetryIntervalS: 20, Retries: 1})
 	fs.setFail(true, false, false)
 	sched.recordHeartbeat(1, time.Now(), model.StatusDown, 5, "boom", nil)
 

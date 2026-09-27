@@ -42,8 +42,10 @@ create a team token (`POST /api/teams/{id}/tokens`, scope `read` or `write`) and
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | required | Postgres URL. Tables live in the `upsera` schema. |
-| `APP_SECRET` | required | ≥ 32 chars; back it up with the database. |
+| `APP_SECRET` | required | ≥ 32 chars; back it up with the database. It encrypts notification channel secrets: changing it makes existing channels unusable until re-entered. |
 | `BASE_URL` | `http://localhost:PORT` | Public URL, used for push URLs and secure cookies. |
+| `TELEGRAM_API_URL` | `https://api.telegram.org` | Telegram Bot API base URL (override for a local fake in tests). |
+| `SLACK_API_URL` | `https://slack.com/api` | Slack Web API base URL (override for a local fake in tests). |
 | `PORT` | `3080` | HTTP port. |
 | `TZ` | `UTC` | Time zone for daily uptime buckets. |
 | `DB_MAX_CONNS` | `10` | Connection pool cap (min 2). |

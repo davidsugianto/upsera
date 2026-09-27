@@ -19,13 +19,17 @@ import (
 	"time"
 	_ "time/tzdata" // TZ works in distroless images without zoneinfo
 
+	"github.com/davidsugianto/upsera/internal/alerting"
 	"github.com/davidsugianto/upsera/internal/api"
 	"github.com/davidsugianto/upsera/internal/checker"
 	"github.com/davidsugianto/upsera/internal/config"
 	"github.com/davidsugianto/upsera/internal/jobs"
+	"github.com/davidsugianto/upsera/internal/maintenance"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
+	"github.com/davidsugianto/upsera/internal/notify"
 	"github.com/davidsugianto/upsera/internal/scheduler"
+	"github.com/davidsugianto/upsera/internal/secret"
 	"github.com/davidsugianto/upsera/internal/store"
 )
 
@@ -70,7 +74,8 @@ func main() {
 
 // run starts every component, serves HTTP on ln until ctx is cancelled, then
 // shuts down in order: stop accepting requests, stop checks and flush
-// buffered heartbeats, close the database.
+// buffered heartbeats, stop alerting (delivering queued notifications and
+// flushing alerts), close the database.
 func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listener) error {
 	log.Info("starting upsera", "version", version, "addr", ln.Addr().String(), "tz", cfg.TimeZone)
 
@@ -99,9 +104,46 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	if err != nil {
 		return fmt.Errorf("load monitor state: %w", err)
 	}
+	box, err := secret.New(cfg.AppSecret)
+	if err != nil {
+		return err
+	}
+	st.SetSecretBox(box)
+	channels, err := st.ListAllChannels(ctx)
+	if err != nil {
+		return fmt.Errorf("load channels: %w", err)
+	}
+	policies, err := st.ListAllPolicies(ctx)
+	if err != nil {
+		return fmt.Errorf("load escalation policies: %w", err)
+	}
+	windows, err := st.ListAllMaintenanceWindows(ctx)
+	if err != nil {
+		return fmt.Errorf("load maintenance windows: %w", err)
+	}
+	openAlerts, err := st.ListOpenAlerts(ctx)
+	if err != nil {
+		return fmt.Errorf("load open alerts: %w", err)
+	}
+	certKeys, err := st.ListCertDedupeKeys(ctx, time.Now().Add(-30*24*time.Hour))
+	if err != nil {
+		return fmt.Errorf("load cert dedupe keys: %w", err)
+	}
+	loc, _ := time.LoadLocation(cfg.TimeZone) // validated by config.Load
+	mreg := maintenance.NewRegistry(loc)
+	mreg.Set(windows)
 
 	policy := netpolicy.New(cfg.DockerHost)
 	policy.SetBlockPrivate(settings.BlockPrivateTargets)
+
+	engine := alerting.New(alerting.Options{
+		Store: st,
+		Notify: notify.Options{
+			Policy: policy, TelegramAPIURL: cfg.TelegramAPIURL, SlackAPIURL: cfg.SlackAPIURL,
+		},
+		Logger:        log.With("component", "alerting"),
+		FlushInterval: cfg.FlushInterval,
+	})
 
 	sched := scheduler.New(st, checker.New(policy), scheduler.Options{
 		ProbeID:       probeID,
@@ -109,12 +151,24 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		BufferSize:    cfg.HeartbeatBufferSize,
 		FlushInterval: cfg.FlushInterval,
 		Logger:        log.With("component", "scheduler"),
+		Maintenance:   mreg,
+		OnTransition:  engine.Publish,
 	})
 	// The scheduler outlives ctx: it is stopped explicitly below so buffered
 	// heartbeats are flushed after the HTTP server has drained.
 	schedCtx, cancelSched := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelSched()
 	sched.Start(schedCtx, monitors, states)
+	// The engine starts after the scheduler has seeded its live states, so
+	// reconciling the open alerts at startup sees them; transitions the
+	// scheduler emits meanwhile are queued by Publish. Like the scheduler,
+	// it is stopped explicitly after it, so the last transitions are still
+	// notified and alerts flushed.
+	engineCtx, cancelEngine := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelEngine()
+	engine.Start(engineCtx, alerting.Snapshot{
+		Monitors: monitors, Channels: channels, Policies: policies, OpenAlerts: openAlerts, CertKeys: certKeys,
+	}, sched)
 	log.Info("scheduler started", "monitors", len(monitors))
 
 	jobsDone := make(chan struct{})
@@ -131,7 +185,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 
 	srv := &http.Server{
 		Handler: api.NewRouter(api.Deps{
-			Store: st, Runner: sched, Policy: policy, Config: cfg,
+			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg,
 			Logger: log.With("component", "api"), Version: version,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -145,6 +199,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	case err := <-serveErr:
 		if !errors.Is(err, http.ErrServerClosed) {
 			cancelSched()
+			cancelEngine()
 			return fmt.Errorf("http server: %w", err)
 		}
 	}
@@ -157,6 +212,9 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	}
 	if err := sched.Shutdown(shutdownCtx); err != nil {
 		log.Warn("scheduler shutdown", "err", err)
+	}
+	if err := engine.Shutdown(shutdownCtx); err != nil {
+		log.Warn("alerting shutdown", "err", err)
 	}
 	<-jobsDone
 	log.Info("stopped")

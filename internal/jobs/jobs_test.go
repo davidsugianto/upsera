@@ -60,6 +60,13 @@ func (f *fakeStore) DeleteExpiredSessions(context.Context) (int64, error) {
 	return 2, f.sessionsErr
 }
 
+func (f *fakeStore) PruneNotificationLog(_ context.Context, before time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.order = append(f.order, "notification_log")
+	return 1, nil
+}
+
 func (f *fakeStore) callOrder() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -93,7 +100,7 @@ func TestRunOrderRollupPruneSessions(t *testing.T) {
 	runOnce(t, st, Options{DefaultRetentionDays: 14, TZ: "UTC"})
 
 	order := st.callOrder()
-	want := []string{"settings", "rollup", "prune", "sessions"}
+	want := []string{"settings", "rollup", "prune", "sessions", "notification_log"}
 	if len(order) != len(want) {
 		t.Fatalf("call order = %v, want %v", order, want)
 	}
@@ -114,7 +121,7 @@ func TestRunPruneSkippedWhenRollupFails(t *testing.T) {
 			t.Fatalf("prune ran despite rollup failure: order=%v", order)
 		}
 	}
-	want := []string{"settings", "rollup", "sessions"}
+	want := []string{"settings", "rollup", "sessions", "notification_log"}
 	if len(order) != len(want) {
 		t.Fatalf("call order = %v, want %v", order, want)
 	}

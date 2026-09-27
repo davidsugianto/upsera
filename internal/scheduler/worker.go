@@ -33,6 +33,16 @@ func (s *Scheduler) runCheckLoop(ctx context.Context, m model.Monitor, jittered 
 	}
 
 	for {
+		if name, ok := s.maintenanceActive(m.ID, time.Now()); ok {
+			s.recordHeartbeat(m.ID, time.Now(), model.StatusMaintenance, 0,
+				model.TruncateMessage("maintenance: "+name), nil)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(interval):
+			}
+			continue
+		}
 		select {
 		case s.sem <- struct{}{}:
 		case <-ctx.Done():
@@ -51,7 +61,7 @@ func (s *Scheduler) runCheckLoop(ctx context.Context, m model.Monitor, jittered 
 			model.TruncateMessage(res.Message), res.TLSExpiresAt)
 
 		next := interval
-		if ns.Status != model.StatusUp && ns.ConsecutiveFailures > 0 && ns.ConsecutiveFailures <= m.Retries {
+		if ns.Status == model.StatusPending {
 			next = time.Duration(m.RetryIntervalS) * s.unit
 		}
 		select {
@@ -59,6 +69,22 @@ func (s *Scheduler) runCheckLoop(ctx context.Context, m model.Monitor, jittered 
 			return
 		case <-time.After(next):
 		}
+	}
+}
+
+// maintenanceActive reports the active maintenance window of monitor id,
+// if any.
+func (s *Scheduler) maintenanceActive(id int64, t time.Time) (string, bool) {
+	if s.opts.Maintenance == nil {
+		return "", false
+	}
+	return s.opts.Maintenance.Active(id, t)
+}
+
+// emit hands tr to OnTransition. Callers hold s.mu (see Options).
+func (s *Scheduler) emit(tr *model.Transition) {
+	if tr != nil && s.opts.OnTransition != nil {
+		s.opts.OnTransition(*tr)
 	}
 }
 
@@ -87,64 +113,123 @@ func (s *Scheduler) runPushLoop(ctx context.Context, m model.Monitor, resetCh <-
 			}
 			timer.Reset(interval)
 		case <-timer.C:
-			msg := fmt.Sprintf("no push received within %ds", m.IntervalS)
-			s.recordHeartbeat(m.ID, time.Now(), model.StatusDown, 0, model.TruncateMessage(msg), nil)
+			if name, ok := s.maintenanceActive(m.ID, time.Now()); ok {
+				s.recordHeartbeat(m.ID, time.Now(), model.StatusMaintenance, 0,
+					model.TruncateMessage("maintenance: "+name), nil)
+			} else {
+				msg := fmt.Sprintf("no push received within %ds", m.IntervalS)
+				s.recordHeartbeat(m.ID, time.Now(), model.StatusDown, 0, model.TruncateMessage(msg), nil)
+			}
 			timer.Reset(interval)
 		}
 	}
 }
 
-// recordHeartbeat buffers hb for the flusher and updates (and dirties) the
-// monitor's in-memory state, deriving Since and ConsecutiveFailures from
-// the previous cached state so restarts and Push reports stay consistent
-// with the ongoing check loop. It returns the new state. If id is no
-// longer in s.monitors (Remove dropped it, racing this call from an
-// in-flight check or Push), it records nothing at all: writing the buffer
-// or states/dirty here would resurrect an id the scheduler has already
-// forgotten.
-func (s *Scheduler) recordHeartbeat(id int64, start time.Time, status model.Status, latencyMs int32, msg string, tlsAt *time.Time) model.MonitorState {
+// recordHeartbeat applies one observation (StatusUp, StatusDown or
+// StatusMaintenance) of monitor id at time at: it runs the state machine
+// against the cached state, buffers a heartbeat carrying the resulting
+// state for the flusher, updates (and dirties) the in-memory state and
+// emits a Transition when the state or the flap state changed. It returns
+// the new state. If id is no longer in s.monitors (Remove dropped it,
+// racing this call from an in-flight check or Push), it records nothing
+// at all: writing the buffer or states/dirty here would resurrect an id
+// the scheduler has already forgotten. Likewise a non-maintenance
+// observation of a paused monitor (a Push that raced the pause) is
+// dropped: nothing would ever move the monitor out of that state.
+func (s *Scheduler) recordHeartbeat(id int64, at time.Time, obs model.Status, latencyMs int32, msg string, tlsAt *time.Time) model.MonitorState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if _, ok := s.monitors[id]; !ok {
+	m, ok := s.monitors[id]
+	if !ok {
 		return model.MonitorState{}
 	}
-
+	if m.Paused && obs != model.StatusMaintenance {
+		return s.states[id]
+	}
+	prev, havePrev := s.states[id]
+	ns := nextState(prev, havePrev, obs, at, m.Retries)
+	ns.MonitorID = id
+	if tlsAt != nil {
+		ns.TLSExpiresAt = tlsAt
+	}
 	s.buf.Add(model.Heartbeat{
 		MonitorID: id,
 		ProbeID:   s.opts.ProbeID,
-		Time:      start,
-		Status:    status,
+		Time:      at,
+		Status:    ns.Status,
 		LatencyMs: latencyMs,
 		Message:   msg,
 	})
+	// Emitted under s.mu so transitions reach OnTransition in the order
+	// they were applied, even for concurrent observations of one monitor.
+	s.emit(s.storeStateLocked(prev, havePrev, ns, msg))
+	return ns
+}
 
-	prev, ok := s.states[id]
-	since := start
-	if ok && prev.Status == status {
-		since = prev.Since
+// enterPausedMaintenance moves a just-paused monitor into MAINTENANCE
+// (without recording a heartbeat) and emits the transition.
+func (s *Scheduler) enterPausedMaintenance(m model.Monitor) {
+	s.mu.Lock()
+	if _, ok := s.monitors[m.ID]; !ok {
+		s.mu.Unlock()
+		return
 	}
-	failures := 0
-	if status != model.StatusUp {
-		if ok {
-			failures = prev.ConsecutiveFailures + 1
-		} else {
-			failures = 1
-		}
+	prev, havePrev := s.states[m.ID]
+	if havePrev && prev.Status == model.StatusMaintenance {
+		s.mu.Unlock()
+		return
 	}
-	if tlsAt == nil && ok {
-		tlsAt = prev.TLSExpiresAt
+	ns := nextState(prev, havePrev, model.StatusMaintenance, time.Now(), m.Retries)
+	ns.MonitorID = m.ID
+	s.emit(s.storeStateLocked(prev, havePrev, ns, "paused"))
+	s.mu.Unlock()
+}
+
+// storeStateLocked does the flap bookkeeping for the change prev → ns,
+// stores ns as dirty and returns the Transition to emit, or nil when
+// neither the state nor the flap state changed. Callers hold s.mu.
+func (s *Scheduler) storeStateLocked(prev model.MonitorState, havePrev bool, ns model.MonitorState, msg string) *model.Transition {
+	id, at := ns.MonitorID, ns.LastCheckAt
+	from := model.StatusUp
+	if havePrev {
+		from = prev.Status
 	}
 
-	ns := model.MonitorState{
-		MonitorID:           id,
-		Status:              status,
-		Since:               since,
-		LastCheckAt:         start,
-		ConsecutiveFailures: failures,
-		TLSExpiresAt:        tlsAt,
+	flaps := s.flaps[id]
+	if (ns.Status == model.StatusDown && from != model.StatusDown) || (from == model.StatusDown && ns.Status == model.StatusUp) {
+		flaps = append(flaps, at)
 	}
+	cutoff := at.Add(-flapWindow)
+	i := 0
+	for i < len(flaps) && flaps[i].Before(cutoff) {
+		i++
+	}
+	flaps = flaps[i:]
+	if len(flaps) == 0 {
+		delete(s.flaps, id)
+	} else {
+		s.flaps[id] = flaps
+	}
+	ns.FlapCount = len(flaps)
+	nowFlapping := ns.FlapCount >= flapThreshold
+	flapChanged := nowFlapping != s.flapping[id]
+	s.flapping[id] = nowFlapping
+
 	s.states[id] = ns
 	s.dirty[id] = struct{}{}
-	return ns
+
+	if ns.Status == from && !flapChanged {
+		return nil
+	}
+	return &model.Transition{
+		MonitorID:   id,
+		From:        from,
+		To:          ns.Status,
+		At:          at,
+		Since:       ns.Since,
+		PrevSince:   prev.Since,
+		Message:     msg,
+		Flapping:    nowFlapping,
+		FlapChanged: flapChanged,
+	}
 }
