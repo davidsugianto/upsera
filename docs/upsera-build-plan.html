@@ -1,0 +1,469 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Upsera Build Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F4F7F5; --surface:#FFFFFF; --ink:#111A14; --muted:#5A6B60; --line:#DCE5DF; --code:#EDF3EF;
+  --accent:#C2185B; --accent-ink:#C2185B; --accent-soft:#FCE4EC;
+  --up:#5CDD8B; --down:#DC3545; --pend:#F8A306; --maint:#1747F5;
+  --on-light:#0B1A10; --on-dark:#FFFFFF;
+  --sans:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#090C10; --surface:#0F141A; --ink:#E4EAE6; --muted:#8E9C94; --line:#1F2833; --code:#141B22;
+    --accent:#C2185B; --accent-ink:#F06292; --accent-soft:#2A0F1B;
+    --up:#5CDD8B; --down:#E5484D; --pend:#F8A306; --maint:#5B7CFA;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#090C10; --surface:#0F141A; --ink:#E4EAE6; --muted:#8E9C94; --line:#1F2833; --code:#141B22;
+  --accent:#C2185B; --accent-ink:#F06292; --accent-soft:#2A0F1B;
+  --up:#5CDD8B; --down:#E5484D; --pend:#F8A306; --maint:#5B7CFA;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(30px,5vw,44px);font-weight:700;letter-spacing:-.02em}
+h2{font-size:24px;font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
+.muted{color:var(--muted)}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+section{display:flex;flex-direction:column;gap:18px}
+.sec-head{display:flex;flex-direction:column;gap:6px;padding-top:20px;border-top:1px solid var(--line)}
+
+/* header */
+header{display:flex;flex-direction:column;gap:18px}
+.lede{font-size:18px;color:var(--muted)}
+.beats{display:flex;gap:3px;align-items:flex-end;height:28px;overflow:hidden}
+.beats i{flex:1 1 0;min-width:3px;max-width:8px;height:100%;border-radius:2px;background:var(--up)}
+.beats i.d{background:var(--down)} .beats i.p{background:var(--pend)} .beats i.m{background:var(--maint)}
+.beat-cap{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:14px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+/* summary grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:8px}
+.card ul{margin:0;padding-left:18px;color:var(--muted);font-size:15px}
+.card ul li{margin:2px 0}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:15px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:600;white-space:nowrap}
+
+/* state machine */
+.states{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:var(--mono);font-size:13px}
+.pill{padding:4px 10px;border-radius:999px;font-weight:600}
+.pill.up{background:var(--up);color:var(--on-light)} .pill.down{background:var(--down);color:var(--on-dark)} .pill.pend{background:var(--pend);color:var(--on-light)} .pill.maint{background:var(--maint);color:var(--on-dark)}
+.arrow{color:var(--muted)}
+
+/* diagram */
+.diagram{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.diagram svg{display:block;min-width:720px;width:100%;height:auto}
+.diagram text{font-family:var(--mono);font-size:12px;fill:var(--ink)}
+.diagram .sub{fill:var(--muted);font-size:11px}
+.diagram .box{fill:var(--bg);stroke:var(--line);stroke-width:1.2}
+.diagram .core{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
+.diagram .ln{stroke:var(--muted);stroke-width:1.2;fill:none}
+.diagram .ah{fill:var(--muted)}
+
+/* phases */
+.phases{display:flex;flex-direction:column;gap:0;border-left:2px solid var(--line);margin-left:10px}
+.phase{position:relative;padding:0 0 26px 26px;display:flex;flex-direction:column;gap:6px}
+.phase:last-child{padding-bottom:0}
+.phase::before{content:attr(data-n);position:absolute;left:-13px;top:0;width:24px;height:24px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);color:var(--accent-ink);font-family:var(--mono);font-size:12px;display:grid;place-items:center;font-weight:500}
+.phase ul{margin:0;padding-left:18px;color:var(--muted);font-size:15px}
+.phase .done{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--code);padding:6px 10px;border-radius:6px;align-self:flex-start}
+
+pre{margin:0;background:var(--code);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;color:var(--ink)}
+.cm{color:var(--muted)}
+
+/* decisions */
+.dec{display:flex;flex-direction:column;gap:10px}
+.dec-item{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;grid-template-columns:1fr;gap:6px}
+.rec{font-family:var(--mono);font-size:12.5px;color:var(--accent-ink)}
+.note{background:var(--accent-soft);border-radius:10px;padding:16px 18px;font-size:15px}
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Plan · v0.5 · built to compete with Uptime Kuma · awaiting review</span>
+  <h1>Upsera: self-hosted uptime monitoring</h1>
+  <p class="lede">A single Go service with an embedded web dashboard that checks HTTP endpoints, keywords, TCP ports and Docker containers, alerts you the moment something fails, and publishes shareable status pages. Ships as one <code>docker compose up -d</code>.</p>
+  <p class="lede">Positioning: Uptime Kuma is excellent for one person watching a homelab. Upsera targets the next step up: teams, multiple regions, fewer false alarms, and monitors managed as code.</p>
+  <div class="beats" aria-hidden="true" id="beats"></div>
+  <div class="beat-cap">
+    <span><span class="dot" style="background:var(--up)"></span>up</span>
+    <span><span class="dot" style="background:var(--down)"></span>down</span>
+    <span><span class="dot" style="background:var(--pend)"></span>pending / degraded</span>
+    <span><span class="dot" style="background:var(--maint)"></span>maintenance</span>
+    <span>example heartbeat bar, one tick per check</span>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Scope</span><h2>What v1 delivers</h2></div>
+  <div class="grid">
+    <div class="card"><h3>Monitors</h3><ul>
+      <li>HTTP(S): method, headers, body, expected status codes, timeout, redirects</li>
+      <li>Keyword: page contains / does not contain text, optional case sensitivity</li>
+      <li>TCP port: connect check with latency</li>
+      <li>Docker container: running state plus healthcheck status</li>
+      <li>Ping, DNS record, and push (heartbeat URL for cron jobs) for parity</li>
+      <li>TLS certificate expiry warning on HTTPS monitors</li>
+    </ul></div>
+    <div class="card"><h3>Notifications</h3><ul>
+      <li>Telegram, Discord, Slack, Email (SMTP)</li>
+      <li>Generic webhook for anything else (ntfy, PagerDuty, n8n)</li>
+      <li>Down, recovered (with downtime), and cert-expiry events</li>
+      <li>Per-monitor channel selection, a "send test" button</li>
+    </ul></div>
+    <div class="card"><h3>Dashboard</h3><ul>
+      <li>All monitors with live state, latency and 24h / 30d uptime</li>
+      <li>Heartbeat bars, response-time chart, event log per monitor</li>
+      <li>Groups and tags, pause / resume, maintenance windows</li>
+      <li>Live updates without refresh (Server-Sent Events)</li>
+      <li>Brand dark pink <code>#C2185B</code> for primary actions, links and accents (text on pink is white); status colors stay semantic (green UP, red DOWN) and never use the brand pink. Dark theme by default</li>
+    </ul></div>
+    <div class="card"><h3>Status pages</h3><ul>
+      <li>Any number of public pages, each at <code>/status/&lt;slug&gt;</code></li>
+      <li>Pick monitors, group them, rename them for the public</li>
+      <li>90-day uptime bars and an overall status banner</li>
+      <li>Incident notes you post manually; optional custom domain</li>
+    </ul></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Differentiators</span><h2>Where Upsera beats Uptime Kuma</h2>
+  <p class="muted">Uptime Kuma has far more notification providers and monitor types. We will not win on breadth in v1, so we aim at the gaps its users have asked about for years: multi-location checks and multi-user support are both long-standing open requests on its GitHub.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Capability</th><th>Uptime Kuma 2.5</th><th>Upsera</th></tr></thead>
+    <tbody>
+      <tr><td>Check locations</td><td>One instance checks from one place</td><td>Remote probe agents in any region; DOWN only when a quorum of regions agrees</td></tr>
+      <tr><td>Users</td><td>Single login</td><td>Teams with owner / editor / viewer roles, per-team monitors, audit log</td></tr>
+      <tr><td>API</td><td>No public API for managing monitors</td><td>REST API with OpenAPI spec and scoped tokens</td></tr>
+      <tr><td>Config as code</td><td>Managed in the UI</td><td>YAML files, <code>upsctl diff</code> / <code>upsctl apply</code> CLI, run from CI for a GitOps workflow</td></tr>
+      <tr><td>Alert routing</td><td>List of channels per monitor</td><td>Escalation policies, acknowledge from Slack or Telegram, dependency suppression, flap damping</td></tr>
+      <tr><td>Slow but up</td><td>Up or down</td><td>DEGRADED state when latency drifts well above its own baseline</td></tr>
+      <tr><td>Reliability targets</td><td>Uptime percentage</td><td>SLOs, error budgets, burn-rate alerts, monthly SLA report</td></tr>
+      <tr><td>Status page updates</td><td>Incidents written by hand</td><td>Incidents auto-drafted from outages, plus email / webhook / RSS subscribers</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted" style="font-size:14px">Uptime Kuma column reflects v2.5.x as of September 2026. Re-check before making public comparison claims.</p>
+
+  <div class="grid">
+    <div class="card"><h3>Multi-location probes</h3><p class="muted" style="font-size:15px">A small <code>upsera-probe</code> binary you run on any VPS. It registers with a token, pulls its assigned monitors over HTTPS, and pushes results back. A monitor checked from Jakarta, Singapore and Frankfurt only goes DOWN if 2 of 3 fail, which removes most false alarms caused by one bad network path. Per-region latency is charted side by side.</p></div>
+    <div class="card"><h3>Smart alerting</h3><p class="muted" style="font-size:15px">Escalation: notify Telegram now, email the team after 10 minutes if nobody acknowledged. Acknowledge with a button in Slack or Telegram. Dependencies: if the router is down, its 20 child services send one alert, not 21. Flapping monitors are held back until they settle.</p></div>
+    <div class="card"><h3>Monitors as code</h3><p class="muted" style="font-size:15px">Every monitor, channel and status page can be described in YAML and applied with the CLI or from a CI job on every push, the same workflow as Terraform or Argo CD. The REST API underneath is the same one the dashboard uses, so nothing is UI-only.</p></div>
+    <div class="card"><h3>SLOs and degraded state</h3><p class="muted" style="font-size:15px">Set a target like 99.9% over 30 days and see the remaining error budget. Burn-rate alerts warn you before the budget runs out. A service that answers in 4 s instead of its usual 200 ms is shown as DEGRADED instead of healthy.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Stack</span><h2>Technology choices</h2>
+  <p class="muted">Picked to match your Go and Prometheus background and to keep the deploy to one container plus a socket proxy.</p></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Backend</td><td>Go 1.27 (go.mod <code>go 1.26</code>), <code>chi</code> router + <code>huma</code> v2 via its chi adapter, <code>log/slog</code></td><td>Single static binary, cheap goroutine-per-monitor scheduling, easy to read and extend. huma generates the OpenAPI 3.1 spec from handler input/output types, so the spec cannot drift from the code.</td></tr>
+      <tr><td>Database</td><td>PostgreSQL 17 via <code>pgx/v5</code>, <code>goose</code> migrations</td><td>One <code>DATABASE_URL</code>: point it at Supabase, or start the bundled Postgres container with the <code>local-db</code> profile. Use Supabase's session pooler (port 5432, IPv4); pgx works there unchanged. Only if you use the transaction pooler (port 6543), add <code>default_query_exec_mode=simple_protocol</code> to the URL. All tables live in a dedicated <code>upsera</code> schema, never <code>public</code>, so Supabase's Data API cannot expose them to the anon key. Pool size is capped by <code>DB_MAX_CONNS</code> (default 10) to stay under the pooler's client limit.</td></tr>
+      <tr><td>Frontend</td><td>React + Vite + TypeScript + Tailwind, embedded via <code>go:embed</code></td><td>Modern dashboard, built in a Docker stage and baked into the binary. No separate web container.</td></tr>
+      <tr><td>Live updates</td><td>Server-Sent Events</td><td>One-way push is all the dashboard needs; simpler than WebSockets behind proxies.</td></tr>
+      <tr><td>Docker checks</td><td>Docker Engine API through <code>tecnativa/docker-socket-proxy</code></td><td>Read-only access to container list and inspect; the app never gets the raw socket.</td></tr>
+      <tr><td>Auth</td><td>Users in teams with roles, bcrypt, HTTP-only session cookie, CSRF token; API tokens scoped per team</td><td>First-run setup creates the instance admin, who also owns the first team. Instance admins manage probes and instance settings (SMTP for subscriber email, outbound target policy, retention). OIDC login (Google, GitHub) planned after v1. Status pages stay public.</td></tr>
+      <tr><td>Probes</td><td><code>upsera-probe</code>, same checker code compiled as a small agent</td><td>Outbound HTTPS only, so a probe works behind NAT with no open ports.</td></tr>
+      <tr><td>CLI</td><td><code>upsctl</code> (Go, cobra) talking to the REST API</td><td><code>upsctl diff</code> and <code>upsctl apply -f monitors.yaml</code>, usable in GitLab CI.</td></tr>
+      <tr><td>Metrics</td><td><code>/metrics</code> Prometheus endpoint, bearer API token with read scope</td><td>Exports only the token's team's monitors; scrape into your existing Grafana.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Architecture</span><h2>How the pieces fit</h2></div>
+  <div class="diagram">
+  <svg viewBox="0 0 900 340" role="img" aria-label="Architecture: browser and status page visitors reach the Go app, which contains the API, scheduler, checkers, alert dispatcher and a Postgres store with write buffer; checkers reach targets and the Docker socket proxy; dispatcher sends to Telegram, Discord, Slack and SMTP">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+    <!-- clients -->
+    <rect class="box" x="10" y="40" width="150" height="54" rx="8"/><text x="24" y="63">Admin dashboard</text><text x="24" y="81" class="sub">React, SSE</text>
+    <rect class="box" x="10" y="130" width="150" height="54" rx="8"/><text x="24" y="153">Status page</text><text x="24" y="171" class="sub">public, cached</text>
+    <rect class="box" x="10" y="220" width="150" height="54" rx="8"/><text x="24" y="243">Remote probes</text><text x="24" y="261" class="sub">other regions, HTTPS</text>
+    <path class="ln" d="M160 247 H210 V100 H240" marker-end="url(#a)"/>
+    <!-- app -->
+    <rect class="core" x="220" y="16" width="400" height="310" rx="12"/>
+    <text x="236" y="40">upsera (single Go binary)</text>
+    <rect class="box" x="240" y="56" width="160" height="50" rx="8"/><text x="254" y="78">HTTP API + auth</text><text x="254" y="95" class="sub">REST, /status, /metrics</text>
+    <rect class="box" x="440" y="56" width="160" height="50" rx="8"/><text x="454" y="78">Event bus</text><text x="454" y="95" class="sub">state changes</text>
+    <rect class="box" x="240" y="140" width="160" height="50" rx="8"/><text x="254" y="162">Scheduler</text><text x="254" y="179" class="sub">1 goroutine / monitor</text>
+    <rect class="box" x="440" y="140" width="160" height="50" rx="8"/><text x="454" y="162">Alert dispatcher</text><text x="454" y="179" class="sub">escalate, ack, dedupe</text>
+    <rect class="box" x="240" y="224" width="160" height="50" rx="8"/><text x="254" y="246">Checkers</text><text x="254" y="263" class="sub">http keyword tcp docker</text>
+    <rect class="box" x="440" y="224" width="160" height="50" rx="8"/><text x="454" y="246">Store + buffer</text><text x="454" y="263" class="sub">Postgres / Supabase</text>
+    <!-- externals -->
+    <rect class="box" x="680" y="40" width="200" height="54" rx="8"/><text x="694" y="63">Telegram Discord</text><text x="694" y="81">Slack SMTP Webhook</text>
+    <rect class="box" x="680" y="150" width="200" height="54" rx="8"/><text x="694" y="173">Your sites / servers</text><text x="694" y="191" class="sub">HTTP(S), TCP</text>
+    <rect class="box" x="680" y="250" width="200" height="54" rx="8"/><text x="694" y="273">docker-socket-proxy</text><text x="694" y="291" class="sub">read-only :2375</text>
+    <!-- lines -->
+    <path class="ln" d="M160 67 H240" marker-end="url(#a)"/>
+    <path class="ln" d="M160 157 H200 V90 H240" marker-end="url(#a)"/>
+    <path class="ln" d="M320 190 V224" marker-end="url(#a)"/>
+    <path class="ln" d="M400 249 H440" marker-end="url(#a)"/>
+    <path class="ln" d="M400 165 H420 V81 H440" marker-end="url(#a)"/>
+    <path class="ln" d="M520 106 V140" marker-end="url(#a)"/>
+    <path class="ln" d="M600 165 H640 V67 H680" marker-end="url(#a)"/>
+    <path class="ln" d="M400 236 H415 V210 H660 V177 H680" marker-end="url(#a)"/>
+    <path class="ln" d="M400 262 H420 V300 H650 V277 H680" marker-end="url(#a)"/>
+  </svg>
+  </div>
+  <p class="muted">Each check result is written as a heartbeat. Only transitions (for example UP to DOWN) go on the event bus, so the dispatcher and the dashboard's live stream react to state changes rather than every check.</p>
+  <p class="muted">Remote probes report into the same pipeline. The server's built-in checker is itself a probe row named <code>local</code>, so every heartbeat has a <code>probe_id</code>. Each region applies its own retries and reports failure only after they are exhausted. For a multi-region monitor, the scheduler takes the latest result per selected region; a result older than 2× the monitor interval is stale and excluded. The monitor goes DOWN when failing regions ≥ quorum. If fewer fresh regions remain than the quorum, the monitor stays PENDING and a "probe silent" alert fires instead of DOWN.</p>
+  <p class="muted">Monitor definitions and channel configs are cached in memory at startup. If Postgres becomes unreachable, checks keep running and state changes still trigger alerts from the cached channels. Escalation timers, acknowledgements and dedupe keys are kept in memory and written to <code>alerts</code> and <code>notification_log</code> once the database is back. Heartbeats queue in a bounded buffer (<code>HEARTBEAT_BUFFER_SIZE</code>, default 100000); when it is full the oldest are dropped and the drop count is logged. A restart during an outage loses the in-memory state, so an ongoing outage may alert once more after the restart. The dashboard shows a "database unreachable" banner, and you get an alert about it too.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Alerting</span><h2>Alert logic, the core feature</h2>
+  <p class="muted">Fast, but not noisy. A single timeout should not wake you up; a real outage should reach you within one or two intervals.</p></div>
+  <div class="states">
+    <span class="pill up">UP</span><span class="arrow">check fails →</span>
+    <span class="pill pend">PENDING</span><span class="arrow">fails N retries →</span>
+    <span class="pill down">DOWN</span><span class="arrow">check passes →</span>
+    <span class="pill up">UP</span>
+    <span class="arrow">· latency above baseline →</span><span class="pill pend">DEGRADED</span>
+    <span class="arrow">· paused / window active →</span><span class="pill maint">MAINTENANCE</span>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>When it fires</h3><ul>
+      <li>DOWN after N consecutive failures (default 1 retry at a shorter retry interval), or when a quorum of regions fails</li>
+      <li>Recovered, including total downtime</li>
+      <li>DEGRADED when a region's p95 latency over a rolling 15-minute window stays above 3x that region's own 7-day baseline</li>
+      <li>SLO burn rate too high, TLS cert expiring in 14 / 7 / 1 days</li>
+      <li>Silenced during maintenance windows and when a parent dependency is already DOWN</li>
+    </ul></div>
+    <div class="card"><h3>How it delivers</h3><ul>
+      <li>Escalation policy per monitor: steps of channels with delays, stopped by an acknowledgement</li>
+      <li>Acknowledge from the dashboard or an inline button in Slack / Telegram. Slack buttons need the Slack app mode (bot token + app-level token, Socket Mode); plain incoming-webhook Slack channels get no buttons. Telegram buttons use long polling (<code>getUpdates</code>). Neither needs a public URL, so acks work behind NAT.</li>
+      <li>Flap damping: a monitor changing state too often sends one "flapping" alert</li>
+      <li>Each channel has its own queue; 3 attempts with backoff; every attempt logged</li>
+      <li>Dedupe key per monitor + event so restarts do not resend</li>
+    </ul></div>
+  </div>
+  <p>Every provider implements one small Go interface, so adding Gotify, ntfy, WhatsApp or Teams later is one file each:</p>
+<pre>type Notifier interface {
+    Type() string                              <span class="cm">// "telegram", "discord", ...</span>
+    Validate(cfg json.RawMessage) error        <span class="cm">// checked when the channel is saved</span>
+    Send(ctx context.Context, cfg json.RawMessage, ev Event) error
+}</pre>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Data</span><h2>Data model</h2></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Table</th><th>Holds</th></tr></thead>
+    <tbody>
+      <tr><td>monitors</td><td>team, type, target, interval, retry interval, retries, timeout, type-specific config (JSON), regions + quorum, parent monitor, group, tags, paused, escalation policy, notification channels</td></tr>
+      <tr><td>heartbeats</td><td>monitor_id, probe_id (the built-in checker is probe <code>local</code>), time, status, latency_ms, message. Indexed on (monitor_id, time). Raw rows kept 14 days by default (<code>HEARTBEAT_RETENTION_DAYS</code>). Roughly 100 bytes per row including the index: 100 monitors at 60 s from one region for 14 days ≈ 2 M rows ≈ 200 MB; from three regions ≈ 600 MB, above Supabase's free 500 MB, so lower the retention or use the local Postgres</td></tr>
+      <tr><td>monitor_state</td><td>current state, since, last check, consecutive failures, flap counter, last dedupe key; survives restarts</td></tr>
+      <tr><td>uptime_daily</td><td>per-monitor daily rollup (checks, up, avg and p95 latency) so 90-day bars and SLO reports stay fast after raw data is pruned</td></tr>
+      <tr><td>probes</td><td>name, region, token hash, last seen, version</td></tr>
+      <tr><td>docker_hosts</td><td>team, name, endpoint (socket proxy URL or TCP with TLS), encrypted TLS material; the compose <code>DOCKER_HOST</code> is seeded as the first team's host at setup</td></tr>
+      <tr><td>notification_channels</td><td>team, type, name, encrypted config, is_default</td></tr>
+      <tr><td>escalation_policies</td><td>ordered steps: channels + delay before the next step</td></tr>
+      <tr><td>alerts</td><td>open alert per outage: monitor, current step, acknowledged by / at, resolved at</td></tr>
+      <tr><td>notification_log</td><td>every send attempt with result, for debugging failed alerts</td></tr>
+      <tr><td>slos</td><td>monitor, target (for example 99.9), window days, burn-rate thresholds</td></tr>
+      <tr><td>status_pages</td><td>team, slug (unique across the instance), title, description, logo, theme, custom domain, published flag</td></tr>
+      <tr><td>status_page_items</td><td>page, section, monitor, display name, order</td></tr>
+      <tr><td>incidents, incident_updates</td><td>page, title, severity, timeline of updates, auto-drafted flag, started / resolved timestamps</td></tr>
+      <tr><td>subscribers</td><td>status page, email or webhook, confirmed flag</td></tr>
+      <tr><td>maintenance_windows</td><td>monitors affected, start, end, optional recurrence</td></tr>
+      <tr><td>teams, users, memberships</td><td>accounts, instance admin flag, roles per team (owner / editor / viewer), sessions</td></tr>
+      <tr><td>api_tokens</td><td>team, scope (read / write), hash, last used</td></tr>
+      <tr><td>instance_settings</td><td>SMTP for subscriber email, outbound target policy, retention, set by instance admins</td></tr>
+      <tr><td>audit_log</td><td>who changed what and when, including changes applied from the CLI</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">Channel secrets (bot tokens, SMTP passwords, webhook URLs) and Docker TLS keys are encrypted at rest with AES-256-GCM. The key is derived from <code>APP_SECRET</code> with HKDF-SHA256, and ciphertexts carry a <code>v1:</code> key-version prefix for rotation. Losing <code>APP_SECRET</code> makes them unrecoverable, so back it up with the database.</p>
+  <p class="muted">Outbound target policy (checks and webhook notifications): the resolved IP is checked at dial time to block DNS rebinding. Link-local and metadata addresses (169.254.0.0/16, fe80::/10) and the <code>docker-proxy</code> host are always refused. Private and loopback ranges are allowed by default for homelab use; an instance admin can block them. Checks never store or return response bodies; heartbeat messages are capped at 200 characters.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Delivery</span><h2>Build phases</h2>
+  <p class="muted">Each phase ends in something you can run. Teams, API tokens and a <code>probe_id</code> on every heartbeat go in from phase 1, because retrofitting them later means rewriting most queries. Phases 1 to 5 reach parity with Uptime Kuma plus team support and smarter alerting; phases 6 and 7 add multi-region checks, SLOs and monitors as code.</p></div>
+  <div class="phases">
+    <div class="phase" data-n="1"><h3>Foundation</h3><ul>
+      <li>Repo layout, config from env, Postgres via pgx + goose migrations, structured logging</li>
+      <li>Teams, users, roles, sessions, scoped API tokens, audit log</li>
+      <li>Scheduler with jittered start, worker cap, graceful shutdown</li>
+      <li>In-memory config cache and heartbeat write buffer so checks survive a database outage</li>
+      <li>Daily rollup into <code>uptime_daily</code> and retention pruning of raw heartbeats</li>
+      <li>Integration tests against a real Postgres container (testcontainers), run in CI from the first commit</li>
+      <li>HTTP, keyword, TCP, ping, DNS and push checkers plus TLS certificate expiry on HTTPS monitors, unit-tested against local test servers</li>
+      <li>REST API with OpenAPI spec generated from the handlers</li>
+    </ul><span class="done">done when: monitors are created via API and store heartbeats</span></div>
+    <div class="phase" data-n="2"><h3>Alerting engine</h3><ul>
+      <li>State machine (UP / PENDING / DOWN / MAINTENANCE, with DEGRADED reserved and detected in phase 7), event bus</li>
+      <li>Dispatcher with per-channel queues, retries, dedupe, log</li>
+      <li>Telegram, Discord, Slack, SMTP, generic webhook, plus test-send endpoint, cert-expiry events</li>
+      <li>Escalation policies, acknowledgement (web, Slack and Telegram buttons; Slack via Socket Mode, Telegram via long polling), dependency suppression, flap damping</li>
+    </ul><span class="done">done when: an unacknowledged outage escalates from Telegram to email, and a DOWN parent silences its children</span></div>
+    <div class="phase" data-n="3"><h3>Dashboard</h3><ul>
+      <li>Login, team switcher, monitor list with heartbeat bars, add / edit forms per monitor type</li>
+      <li>Monitor detail: latency chart, uptime 24h / 7d / 30d, event history, open alerts with Acknowledge</li>
+      <li>Channels, escalation policies, maintenance windows, members and tokens, SSE live updates</li>
+    </ul><span class="done">done when: everything above is manageable from the browser</span></div>
+    <div class="phase" data-n="4"><h3>Docker monitoring</h3><ul>
+      <li>Docker host config (socket proxy URL, or a remote host over TCP / TLS)</li>
+      <li>Container picker in the UI, checks for running state and health status</li>
+      <li>Messages like "exited (137)" or "unhealthy" surfaced in alerts</li>
+    </ul><span class="done">done when: <code>docker stop</code> on a watched container triggers an alert</span></div>
+    <div class="phase" data-n="5"><h3>Status pages</h3><ul>
+      <li>Page builder: sections, monitor selection, public names, branding, custom domain</li>
+      <li>Public page with overall banner, 90-day bars, incident timeline; responses cached 30s</li>
+      <li>Custom domains: a page is served when the request Host equals its <code>custom_domain</code>; the Caddy profile issues certificates with on-demand TLS, gated by <code>GET /api/tls-allowed?domain=</code> returning 200 only for published pages</li>
+      <li>Incidents auto-drafted when a listed monitor is DOWN for 5 minutes, published after you review</li>
+      <li>Subscribers by email (instance SMTP), webhook and RSS</li>
+    </ul><span class="done">done when: two public pages render with different monitors, and a subscriber gets the incident email</span></div>
+    <div class="phase" data-n="6"><h3>Multi-location probes</h3><ul>
+      <li><code>upsera-probe</code> binary and <code>upsera/upsera-probe</code> image; register with a one-time token</li>
+      <li>Probes pull assignments and push results over HTTPS, with local buffering if the server is unreachable</li>
+      <li>Per-monitor region selection and quorum; per-region latency chart; alert when a probe goes silent</li>
+    </ul><span class="done">done when: firewalling the target from one probe's region fires no alert, from two regions fires DOWN, and stopping one probe fires "probe silent", not DOWN</span></div>
+    <div class="phase" data-n="7"><h3>SLOs and monitors as code</h3><ul>
+      <li>SLO targets, error budget view, multi-window burn-rate alerts, monthly SLA report</li>
+      <li>DEGRADED detection from rolling per-region p95 baseline</li>
+      <li><code>upsctl</code> CLI: <code>export</code>, <code>diff</code>, <code>apply</code> for monitors, channels, policies and status pages; example GitLab CI job; <code>export</code> writes channel secrets as <code>${ENV_VAR}</code> placeholders, never plaintext, and <code>apply</code> resolves them from the CLI's environment</li>
+    </ul><span class="done">done when: <code>upsctl apply</code> from CI creates the same setup on a fresh instance</span></div>
+    <div class="phase" data-n="8"><h3>Packaging and launch</h3><ul>
+      <li>Multi-stage Dockerfile (node build, go build, distroless runtime, non-root); <code>time/tzdata</code> embedded so <code>TZ</code> works; ping uses unprivileged ICMP sockets (no <code>CAP_NET_RAW</code>)</li>
+      <li>docker-compose.yml with <code>local-db</code> profile, <code>.env.example</code> for Supabase and local, healthcheck, backup notes</li>
+      <li>Optional Caddy profile for HTTPS, <code>/metrics</code>, docs site, README with a comparison table and screenshots</li>
+    </ul><span class="done">done when: fresh server to working dashboard in under 5 minutes</span></div>
+  </div>
+  <div class="card"><h3>After v1</h3><ul>
+    <li>Kubernetes monitor: deployment ready replicas, crash-looping pods, via in-cluster service account</li>
+    <li>High availability: several app replicas sharing monitors through Postgres advisory locks</li>
+    <li>OIDC login (Google, GitHub), Terraform provider, more notifiers (ntfy, Gotify, Teams, PagerDuty native)</li>
+    <li>More monitor types: gRPC health, MQTT, database connection checks</li>
+  </ul></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Deploy</span><h2>Docker Compose shape</h2></div>
+<pre><span class="cm"># docker-compose.yml (draft)</span>
+services:
+  upsera:
+    image: upsera/upsera:latest
+    build: ..                       <span class="cm"># Dockerfile at repo root; compose lives in deploy/</span>
+    restart: unless-stopped
+    ports: ["3080:3080"]            <span class="cm"># not 3001, Uptime Kuma's default; with --profile https use "127.0.0.1:3080:3080"</span>
+    env_file: .env                  <span class="cm"># DATABASE_URL, APP_SECRET, BASE_URL, TZ=Asia/Jakarta, PORT=3080</span>
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375  <span class="cm"># seeded as the first team's Docker host at setup</span>
+    depends_on:
+      docker-proxy: { condition: service_started }
+      postgres: { condition: service_healthy, required: false }   <span class="cm"># Compose ≥ 2.20</span>
+    healthcheck:
+      test: ["CMD", "/upsera", "healthcheck"]   <span class="cm"># distroless has no curl; subcommand GETs /healthz</span>
+      interval: 30s
+
+  postgres:                         <span class="cm"># only with: docker compose --profile local-db up -d</span>
+    image: postgres:17-alpine
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: upsera
+      POSTGRES_USER: upsera
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: ["pg_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U upsera -d upsera"]
+      interval: 10s
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1                 <span class="cm"># read container list / inspect only</span>
+      POST: 0
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+
+  caddy:                            <span class="cm"># optional: docker compose --profile https up -d</span>
+    image: caddy:2
+    profiles: ["https"]
+    ports: ["80:80", "443:443"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile", "caddy_data:/data"]
+    <span class="cm"># Caddyfile reverse-proxies to upsera:3080; on_demand_tls asks http://upsera:3080/api/tls-allowed</span>
+
+volumes: { caddy_data: {}, pg_data: {} }</pre>
+<pre><span class="cm"># .env: pick one DATABASE_URL</span>
+<span class="cm"># Supabase (session pooler, IPv4 friendly)</span>
+DATABASE_URL=postgres://postgres.&lt;project-ref&gt;:&lt;password&gt;@&lt;pooler-host from Supabase "Connect" dialog&gt;:5432/postgres?sslmode=require
+<span class="cm"># Local container (--profile local-db)</span>
+<span class="cm"># DATABASE_URL=postgres://upsera:&lt;same as POSTGRES_PASSWORD&gt;@postgres:5432/upsera?sslmode=disable</span>
+<span class="cm"># POSTGRES_PASSWORD=&lt;random, only for --profile local-db&gt;</span>
+APP_SECRET=&lt;output of: openssl rand -base64 32&gt;
+BASE_URL=https://status.example.com
+HEARTBEAT_RETENTION_DAYS=14
+DB_MAX_CONNS=10
+HEARTBEAT_BUFFER_SIZE=100000</pre>
+<pre><span class="cm"># remote probe, on any other VPS (no open ports needed)</span>
+docker run -d --restart unless-stopped --name upsera-probe \
+  -v upsera-probe:/data \
+  -e SERVER_URL=https://status.example.com \
+  -e PROBE_TOKEN=&lt;one-time token from Settings &gt; Probes; exchanged on first start for a credential kept in /data&gt; \
+  -e REGION=sg-1 \
+  upsera/upsera-probe:latest</pre>
+<pre><span class="cm"># repo layout</span>
+cmd/upsera/            main.go (server)
+cmd/upsera-probe/      main.go (remote agent)
+cmd/upsctl/            main.go (CLI: export, diff, apply)
+internal/api/          REST handlers, OpenAPI, auth, RBAC, SSE, status page routes
+internal/scheduler/    per-monitor loops, quorum, state machine
+internal/checker/      http keyword tcp ping dns push docker (shared with the probe)
+internal/alerting/     escalation, acknowledgement, dependencies, flap damping
+internal/notify/       dispatcher.go telegram.go discord.go slack.go smtp.go webhook.go
+internal/slo/          error budget and burn-rate evaluation
+internal/store/        postgres (pgx), migrations/
+web/                   React app (Vite), embedded at build time
+deploy/                docker-compose.yml, Caddyfile, .env.example</pre>
+</section>
+
+<section>
+  <div class="sec-head"><span class="eyebrow">Before I build</span><h2>Decisions for you</h2>
+  <p class="muted">I will go with the recommendation on each unless you say otherwise.</p></div>
+  <div class="dec">
+    <div class="dec-item"><h3>1. Goal</h3><p class="muted">Build a product that competes with Uptime Kuma.</p><span class="rec">decided: build</span></div>
+    <div class="dec-item"><h3>2. Backend language</h3><p class="muted">Go matches your stack and lets the server, probe and CLI share one codebase.</p><span class="rec">decided: Go</span></div>
+    <div class="dec-item"><h3>3. Database</h3><p class="muted">Postgres, either Supabase (managed, free up to 500 MB) or the bundled container. Same code, only <code>DATABASE_URL</code> changes.</p><span class="rec">decided: Postgres, Supabase or local</span></div>
+    <div class="dec-item"><h3>4. Users</h3><p class="muted">Teams and roles are now part of v1, since they are one of the main reasons to choose Upsera.</p><span class="rec">decided: teams with roles from phase 1</span></div>
+    <div class="dec-item"><h3>5. License</h3><p class="muted">MIT (same as Uptime Kuma) is easiest to adopt. AGPL-3.0 stops someone from selling it as a hosted service without sharing changes. The repo already has an MIT <code>LICENSE</code> committed; switching to AGPL-3.0 must happen before accepting outside contributions.</p><span class="rec">recommended: AGPL-3.0 if you may offer a hosted version later, otherwise MIT</span></div>
+    <div class="dec-item"><h3>6. First public release</h3><p class="muted">Release after phase 5 as v0.x to get users early, or wait for all 8 phases. A phase-5 release differentiates on teams and alert routing only; multi-region checks, SLOs and monitors as code land in phases 6–7.</p><span class="rec">recommended: public v0.x after phase 5, v1.0 after phase 8</span></div>
+    <div class="dec-item"><h3>7. Name and brand</h3><p class="muted">Product name is Upsera. Server binary <code>upsera</code>, remote agent <code>upsera-probe</code>, CLI <code>upsctl</code>. Brand color is dark pink <code>#C2185B</code> (lighter <code>#F06292</code> for text on the near-black <code>#090C10</code> dark theme), deliberately distinct from Uptime Kuma's green <code>#5CDD8B</code>. Reserve the GitHub org, domain and Docker Hub namespace before launch.</p><span class="rec">decided: Upsera, dark pink #C2185B</span></div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+  var el=document.getElementById('beats'); if(!el) return;
+  var pattern='uuuuuuuuuuuuuuuuuuuupduuuuuuuuuuuuummmuuuuuuuuuuuuuuuuuuuuuupuuuuuuuuuuuuuuuuuuuuuuu';
+  var cls={u:'',d:'d',p:'p',m:'m'};
+  for(var i=0;i<pattern.length;i++){var t=document.createElement('i');if(cls[pattern[i]])t.className=cls[pattern[i]];el.appendChild(t);}
+})();
+</script>
+
+</body></html>
