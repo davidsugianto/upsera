@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidsugianto/upsera/internal/checker"
+	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/scheduler"
 	"github.com/davidsugianto/upsera/internal/store"
@@ -120,7 +121,7 @@ type listMonitorsOutput struct {
 type listHeartbeatsInput struct {
 	TeamID    int64     `path:"teamID"`
 	MonitorID int64     `path:"monitorID"`
-	Limit     int       `query:"limit" default:"100" minimum:"1" maximum:"1000"`
+	Limit     int       `query:"limit" default:"100" minimum:"1" maximum:"5000"`
 	Since     time.Time `query:"since"`
 }
 
@@ -299,6 +300,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		}
 		d.Runner.Upsert(created)
 		d.Alerting.UpsertMonitor(created)
+		d.Events.Publish(in.TeamID, events.MonitorsChanged{MonitorID: created.ID})
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.create", "monitor", &created.ID,
 			map[string]any{"name": created.Name, "type": created.Type})
 		return &monitorOutput{Body: toMonitorBody(d, created)}, nil
@@ -349,6 +351,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		}
 		d.Runner.Upsert(updated)
 		d.Alerting.UpsertMonitor(updated)
+		d.Events.Publish(in.TeamID, events.MonitorsChanged{MonitorID: updated.ID})
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.update", "monitor", &updated.ID, map[string]any{"name": updated.Name})
 		return &monitorOutput{Body: toMonitorBody(d, updated)}, nil
 	})
@@ -363,6 +366,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		}
 		d.Runner.Remove(in.MonitorID)
 		d.Alerting.RemoveMonitor(in.MonitorID)
+		d.Events.Publish(in.TeamID, events.MonitorsChanged{MonitorID: in.MonitorID, Deleted: true})
 		writeAudit(ctx, d, &in.TeamID, act, "monitor.delete", "monitor", &in.MonitorID, nil)
 		return nil, nil
 	})

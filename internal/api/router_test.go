@@ -21,6 +21,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/alerting"
 	"github.com/davidsugianto/upsera/internal/api"
 	"github.com/davidsugianto/upsera/internal/config"
+	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 	"github.com/davidsugianto/upsera/internal/scheduler"
@@ -253,7 +254,7 @@ func newTestServer(t *testing.T) (base string, runner *fakeRunner, policy *netpo
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := api.NewRouter(api.Deps{
 		Store: st, Runner: runner, Alerting: alerts, Maintenance: maint,
-		Policy: policy, Config: cfg, Logger: logger, Version: "test",
+		Policy: policy, Config: cfg, Logger: logger, Version: "test", Events: events.NewHub(),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -924,7 +925,7 @@ func TestAuthMiddlewareDBOutage(t *testing.T) {
 	policy := netpolicy.New("")
 	cfg := config.Config{BaseURL: "http://upsera.test", Port: 3080}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := api.NewRouter(api.Deps{Store: st, Runner: runner, Policy: policy, Config: cfg, Logger: logger, Version: "test"})
+	h := api.NewRouter(api.Deps{Store: st, Runner: runner, Policy: policy, Config: cfg, Logger: logger, Version: "test", Events: events.NewHub()})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	base := srv.URL

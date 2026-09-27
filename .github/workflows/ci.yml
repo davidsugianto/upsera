@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 permissions:
@@ -30,3 +30,36 @@ jobs:
       # unprivileged ICMP sockets, which Ubuntu allows via ping_group_range.
       - name: test
         run: go test -race -count=1 ./...
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install
+        working-directory: web
+        run: npm ci
+      - name: API types up to date
+        working-directory: web
+        run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
+      - name: lint
+        working-directory: web
+        run: npm run lint
+      - name: test
+        working-directory: web
+        run: npm test
+      - name: build
+        working-directory: web
+        run: npm run build
+      # The dashboard is embedded with go:embed, so the server must build
+      # (and serve it) with the freshly built dist/app.
+      - name: embed
+        run: go build ./... && go test ./web/

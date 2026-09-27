@@ -1,0 +1,11 @@
+.git
+.github
+**/.env
+deploy
+docs
+web/node_modules
+web/dist/app
+web/openapi.json
+web/tsconfig.tsbuildinfo
+*.test
+*.out

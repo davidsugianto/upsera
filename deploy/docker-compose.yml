@@ -1,0 +1,61 @@
+# Upsera with Docker Compose. Configure deploy/.env first (see .env.example,
+# or run `make env`), then from the repo root:
+#
+#   docker compose -f deploy/docker-compose.yml --profile local-db up -d --build   # bundled Postgres
+#   docker compose -f deploy/docker-compose.yml up -d --build                      # external DB (Supabase)
+#
+# `make up` / `make down` wrap the local-db variant.
+name: upsera
+
+services:
+  upsera:
+    image: upsera/upsera:${UPSERA_VERSION:-dev}
+    build:
+      context: ..
+      args:
+        VERSION: ${UPSERA_VERSION:-dev}
+    restart: unless-stopped
+    ports: ["${UPSERA_PORT:-3080}:3080"]
+    env_file: .env
+    environment:
+      PORT: "3080"
+      # Refused as a check target; Docker monitoring (phase 4) will use it.
+      DOCKER_HOST: tcp://docker-proxy:2375
+    sysctls:
+      # Unprivileged ICMP for ping monitors (the image runs as non-root).
+      net.ipv4.ping_group_range: "0 2147483647"
+    depends_on:
+      docker-proxy: { condition: service_started }
+      postgres: { condition: service_healthy, required: false }
+    healthcheck:
+      test: ["CMD", "/upsera", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: upsera
+      POSTGRES_USER: upsera
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes: ["pg_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U upsera -d upsera"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1 # read container list / inspect only
+      POST: 0
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+
+volumes:
+  pg_data: {}

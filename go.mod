@@ -2,6 +2,8 @@ module github.com/davidsugianto/upsera
 
 go 1.26.0
 
+ignore ./web/node_modules
+
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/danielgtaylor/huma/v2 v2.39.1

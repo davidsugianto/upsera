@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Dashboard build output and dependencies
+web/node_modules/
+web/dist/app/
+web/openapi.json
+web/tsconfig.tsbuildinfo
+bin/

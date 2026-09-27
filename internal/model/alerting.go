@@ -199,6 +199,8 @@ type MaintenanceWindow struct {
 // Transition is a monitor state change, emitted by the scheduler onto the
 // alerting event bus.
 type Transition struct {
+	// TeamID is the team of the monitor, for the dashboard stream.
+	TeamID    int64
 	MonitorID int64
 	From, To  Status
 	At        time.Time

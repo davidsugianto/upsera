@@ -153,6 +153,18 @@ type Heartbeat struct {
 	Message   string
 }
 
+// UptimeCount is an uptime tally: Checks excludes maintenance heartbeats,
+// Up counts up and pending ones (the same rules as uptime_daily).
+type UptimeCount struct{ Checks, Up int }
+
+// StatusChange is a heartbeat whose status differs from the previous one.
+type StatusChange struct {
+	Time     time.Time
+	Status   Status
+	Previous *Status // nil for the oldest retained heartbeat
+	Message  string
+}
+
 // TruncateMessage sanitizes a heartbeat message (replacing invalid UTF-8
 // with U+FFFD and stripping NUL bytes, which Postgres text columns reject)
 // then caps it at MaxMessageLen runes.

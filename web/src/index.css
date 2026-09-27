@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import "uplot/dist/uPlot.min.css";
+
+/* Palette from docs/upsera-build-plan.html. Brand pink (--accent) is for
+   actions and accents only; status colours use --up/--down/--pend/--maint. */
+:root {
+  color-scheme: light;
+  --bg: #F4F7F5; --surface: #FFFFFF; --ink: #111A14; --muted: #5A6B60; --line: #DCE5DF;
+  --accent: #C2185B; --accent-ink: #C2185B; --accent-soft: #FCE4EC;
+  --up: #5CDD8B; --down: #DC3545; --pend: #F8A306; --maint: #1747F5;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #090C10; --surface: #0F141A; --ink: #E4EAE6; --muted: #8E9C94; --line: #1F2833;
+  --accent: #C2185B; --accent-ink: #F06292; --accent-soft: #2A0F1B;
+  --up: #5CDD8B; --down: #E5484D; --pend: #F8A306; --maint: #5B7CFA;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-pend: var(--pend);
+  --color-maint: var(--maint);
+  --font-sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  html, body { background: var(--bg); color: var(--ink); }
+  body { font-family: var(--font-sans); font-size: 14px; }
+  dialog { color: var(--ink); }
+  dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-[#C2185B] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#AD1457] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-down hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+  }
+  .card {
+    @apply rounded-lg border border-line bg-surface;
+  }
+  .link {
+    @apply text-accent-ink hover:underline;
+  }
+}

@@ -3,6 +3,7 @@
 //
 //	upsera              run the server (configured from the environment)
 //	upsera healthcheck  exit 0 if the local server's /healthz answers 200
+//	upsera openapi      print the OpenAPI document (for web type generation)
 //	upsera version      print the version
 package main
 
@@ -23,6 +24,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/api"
 	"github.com/davidsugianto/upsera/internal/checker"
 	"github.com/davidsugianto/upsera/internal/config"
+	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/jobs"
 	"github.com/davidsugianto/upsera/internal/maintenance"
 	"github.com/davidsugianto/upsera/internal/model"
@@ -31,6 +33,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/scheduler"
 	"github.com/davidsugianto/upsera/internal/secret"
 	"github.com/davidsugianto/upsera/internal/store"
+	"github.com/davidsugianto/upsera/web"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -41,11 +44,19 @@ func main() {
 		switch os.Args[1] {
 		case "healthcheck":
 			os.Exit(healthcheck(os.Getenv("PORT")))
+		case "openapi":
+			spec, err := api.OpenAPISpec(version)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "openapi: %v\n", err)
+				os.Exit(1)
+			}
+			os.Stdout.Write(append(spec, '\n'))
+			return
 		case "version", "--version", "-v":
 			fmt.Println(version)
 			return
 		default:
-			fmt.Fprintf(os.Stderr, "unknown command %q (commands: healthcheck, version)\n", os.Args[1])
+			fmt.Fprintf(os.Stderr, "unknown command %q (commands: healthcheck, openapi, version)\n", os.Args[1])
 			os.Exit(2)
 		}
 	}
@@ -136,6 +147,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	policy := netpolicy.New(cfg.DockerHost)
 	policy.SetBlockPrivate(settings.BlockPrivateTargets)
 
+	hub := events.NewHub()
 	engine := alerting.New(alerting.Options{
 		Store: st,
 		Notify: notify.Options{
@@ -143,6 +155,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		},
 		Logger:        log.With("component", "alerting"),
 		FlushInterval: cfg.FlushInterval,
+		OnAlert:       func(a model.Alert) { hub.Publish(a.TeamID, a) },
 	})
 
 	sched := scheduler.New(st, checker.New(policy), scheduler.Options{
@@ -152,7 +165,10 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		FlushInterval: cfg.FlushInterval,
 		Logger:        log.With("component", "scheduler"),
 		Maintenance:   mreg,
-		OnTransition:  engine.Publish,
+		OnTransition: func(t model.Transition) {
+			engine.Publish(t)
+			hub.Publish(t.TeamID, t)
+		},
 	})
 	// The scheduler outlives ctx: it is stopped explicitly below so buffered
 	// heartbeats are flushed after the HTTP server has drained.
@@ -186,11 +202,14 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	srv := &http.Server{
 		Handler: api.NewRouter(api.Deps{
 			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg,
-			Logger: log.With("component", "api"), Version: version,
+			Logger: log.With("component", "api"), Version: version, Events: hub, UI: web.Handler(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
+	// Close the live streams on shutdown; srv.Shutdown would otherwise wait
+	// for them until its deadline.
+	srv.RegisterOnShutdown(hub.Close)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

@@ -162,7 +162,11 @@ func (s *Scheduler) recordHeartbeat(id int64, at time.Time, obs model.Status, la
 	})
 	// Emitted under s.mu so transitions reach OnTransition in the order
 	// they were applied, even for concurrent observations of one monitor.
-	s.emit(s.storeStateLocked(prev, havePrev, ns, msg))
+	tr := s.storeStateLocked(prev, havePrev, ns, msg)
+	if tr != nil {
+		tr.TeamID = m.TeamID
+	}
+	s.emit(tr)
 	return ns
 }
 
@@ -181,7 +185,11 @@ func (s *Scheduler) enterPausedMaintenance(m model.Monitor) {
 	}
 	ns := nextState(prev, havePrev, model.StatusMaintenance, time.Now(), m.Retries)
 	ns.MonitorID = m.ID
-	s.emit(s.storeStateLocked(prev, havePrev, ns, "paused"))
+	tr := s.storeStateLocked(prev, havePrev, ns, "paused")
+	if tr != nil {
+		tr.TeamID = m.TeamID
+	}
+	s.emit(tr)
 	s.mu.Unlock()
 }
 

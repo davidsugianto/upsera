@@ -66,6 +66,9 @@ type Options struct {
 	Notifiers     map[model.ChannelType]notify.Notifier
 	Logger        *slog.Logger
 	FlushInterval time.Duration // default 1s
+	// OnAlert receives a copy of every alert after each change (called with
+	// the engine lock held; must not block; nil = drop).
+	OnAlert func(model.Alert)
 }
 
 // Engine is the alerting engine. All exported methods are safe for
@@ -731,7 +734,12 @@ func (e *Engine) sendStepLocked(m model.Monitor, idx int, ev notify.Event, key s
 	}
 }
 
-func (e *Engine) markDirtyLocked(a *model.Alert) { e.dirty[a.ID] = struct{}{} }
+func (e *Engine) markDirtyLocked(a *model.Alert) {
+	e.dirty[a.ID] = struct{}{}
+	if e.opts.OnAlert != nil {
+		e.opts.OnAlert(copyAlert(a))
+	}
+}
 
 func copyAlert(a *model.Alert) model.Alert {
 	c := *a

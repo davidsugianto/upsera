@@ -8,9 +8,30 @@ The product plan lives in [`docs/upsera-build-plan.html`](docs/upsera-build-plan
 Phase 1 (foundation) is done: teams, users and roles, sessions, scoped API tokens, audit log,
 HTTP / keyword / TCP / ping / DNS / push checks with TLS expiry, a scheduler that keeps
 checking through a database outage, daily uptime rollup and retention pruning, and a REST API
-with a generated OpenAPI spec. Alerting, the dashboard and status pages come in later phases.
+with a generated OpenAPI spec. Phase 2 (alerting) added notification channels, escalation
+policies, acknowledgements, monitor dependencies, flap damping and maintenance windows.
+Phase 3 (dashboard) adds a browser dashboard embedded in the server binary, with live updates
+over Server-Sent Events. Status pages come in a later phase.
 
-## Run locally
+## Run with Docker Compose
+
+Needs Docker with Compose ≥ 2.20 (colima works).
+
+```sh
+make up      # writes deploy/.env with random secrets if missing, builds the image, starts the stack
+make logs    # follow the server logs
+make down    # stop (the Postgres volume is kept)
+```
+
+Then open <http://localhost:3080/>. The stack (`deploy/docker-compose.yml`) runs the server, a
+Postgres 17 container (the `local-db` profile) and a read-only Docker socket proxy. To use
+Supabase instead, set its `DATABASE_URL` in `deploy/.env` (see `deploy/.env.example`) and run
+`docker compose -f deploy/docker-compose.yml up -d --build` without `--profile local-db`.
+To start over with an empty database: `docker compose -f deploy/docker-compose.yml --profile local-db down -v`.
+
+`make help` lists every task (build, test, lint, gen-api, ...).
+
+## Run locally without Docker
 
 Needs Go 1.26+ and Postgres 17 (Supabase works too; see the plan for the pooler URL).
 
@@ -23,10 +44,19 @@ export APP_SECRET="$(openssl rand -base64 32)"
 go run ./cmd/upsera
 ```
 
-The server listens on `:3080`. API docs: <http://localhost:3080/api/docs>.
+The server listens on `:3080`. Open <http://localhost:3080/> for the dashboard (the first visit
+walks you through creating the instance admin and first team). API docs:
+<http://localhost:3080/api/docs>.
 
-First run: `POST /api/setup` with `{"email","name","password","team_name"}` creates the
-instance admin and the first team, and logs you in.
+The dashboard is built into the binary with `go:embed`. Build it first, or the server shows a
+"not built" page at `/`:
+
+```sh
+npm --prefix web ci && npm --prefix web run build   # needs Node 24+
+```
+
+First run without the dashboard: `POST /api/setup` with `{"email","name","password","team_name"}`
+creates the instance admin and the first team, and logs you in.
 
 ```sh
 curl -c jar -X POST localhost:3080/api/setup -H 'content-type: application/json' \
@@ -58,6 +88,7 @@ create a team token (`POST /api/teams/{id}/tokens`, scope `read` or `write`) and
 | `LOG_LEVEL` / `LOG_FORMAT` | `info` / `json` | Logging. |
 
 `upsera healthcheck` exits 0 when the local server answers `/healthz` (for container health checks).
+`upsera openapi` prints the OpenAPI document.
 
 ## Development
 
@@ -68,3 +99,14 @@ go test -short ./... # unit tests only
 
 With colima, export `DOCKER_HOST=unix://$HOME/.config/colima/default/docker.sock` and
 `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` first.
+
+Dashboard (`web/`: React, Vite, TypeScript, Tailwind):
+
+```sh
+cd web
+npm ci
+npm run dev       # Vite on :5173, proxying /api to a server on :3080
+npm test          # Vitest
+npm run lint
+npm run gen:api   # regenerate src/api/schema.d.ts after API changes (CI checks it is current)
+```

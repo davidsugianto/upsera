@@ -24,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/davidsugianto/upsera/internal/config"
+	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 	"github.com/davidsugianto/upsera/internal/scheduler"
@@ -71,6 +72,12 @@ type Deps struct {
 	Config      config.Config
 	Logger      *slog.Logger
 	Version     string
+	// Events receives monitor-list changes and feeds the dashboard's live
+	// stream (required).
+	Events *events.Hub
+	// UI serves the dashboard for every path the API does not route (nil =
+	// no dashboard).
+	UI http.Handler
 }
 
 const (
@@ -89,8 +96,26 @@ type noInput struct{}
 type emptyOutput struct{}
 
 // NewRouter builds the HTTP handler for the whole API, plus the
-// unauthenticated /healthz endpoint used by container health checks.
+// unauthenticated /healthz endpoint used by container health checks and,
+// when d.UI is set, the dashboard for every other path.
 func NewRouter(d Deps) http.Handler {
+	r, _ := newAPI(d)
+	if d.UI != nil {
+		r.NotFound(d.UI.ServeHTTP)
+	}
+	return r
+}
+
+// OpenAPISpec returns the generated OpenAPI document (for web type
+// generation).
+func OpenAPISpec(version string) ([]byte, error) {
+	_, a := newAPI(Deps{Version: version, Logger: slog.New(slog.DiscardHandler)})
+	return json.MarshalIndent(a.OpenAPI(), "", "  ")
+}
+
+// newAPI builds the chi router with /healthz and every huma operation
+// registered.
+func newAPI(d Deps) (*chi.Mux, huma.API) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer, accessLogMiddleware(d.Logger))
 	r.Get("/healthz", healthzHandler(d))
@@ -180,8 +205,10 @@ func NewRouter(d Deps) http.Handler {
 	registerMaintenanceRoutes(api, d)
 	registerAuditRoutes(api, d)
 	registerPushRoutes(api, d)
+	registerDashboardRoutes(api, d)
+	registerEventRoutes(api, d)
 
-	return r
+	return r, api
 }
 
 func safeMethod(m string) bool {
