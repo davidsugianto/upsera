@@ -83,17 +83,8 @@ func (p *Policy) BlockPrivate() bool { return p.blockPrivate.Load() }
 // returns an error wrapping ErrBlocked.
 func (p *Policy) Check(ip netip.Addr) error {
 	ip = ip.Unmap()
-	if !ip.IsValid() {
-		return fmt.Errorf("%w: invalid address", ErrBlocked)
-	}
-	if ip.IsUnspecified() {
-		return fmt.Errorf("%w: unspecified address %s", ErrBlocked, ip)
-	}
-	if ip.IsLinkLocalUnicast() {
-		return fmt.Errorf("%w: link-local address %s", ErrBlocked, ip)
-	}
-	if ip == metadataAWSv6 || ip == metadataAliyun {
-		return fmt.Errorf("%w: cloud metadata address %s", ErrBlocked, ip)
+	if err := checkAlways(ip); err != nil {
+		return err
 	}
 	if p.isDockerHost(ip) {
 		return fmt.Errorf("%w: docker host address %s", ErrBlocked, ip)
@@ -112,10 +103,43 @@ func (p *Policy) Check(ip netip.Addr) error {
 	return nil
 }
 
+// CheckDockerHost is Check for connections to a configured Docker host: it
+// refuses only the always-blocked addresses (unspecified, link-local, cloud
+// metadata). The Docker host itself and private ranges are allowed, because
+// a Docker host is a deliberately configured trusted endpoint (the socket
+// proxy is usually private).
+func CheckDockerHost(ip netip.Addr) error { return checkAlways(ip.Unmap()) }
+
+func checkAlways(ip netip.Addr) error {
+	if !ip.IsValid() {
+		return fmt.Errorf("%w: invalid address", ErrBlocked)
+	}
+	if ip.IsUnspecified() {
+		return fmt.Errorf("%w: unspecified address %s", ErrBlocked, ip)
+	}
+	if ip.IsLinkLocalUnicast() {
+		return fmt.Errorf("%w: link-local address %s", ErrBlocked, ip)
+	}
+	if ip == metadataAWSv6 || ip == metadataAliyun {
+		return fmt.Errorf("%w: cloud metadata address %s", ErrBlocked, ip)
+	}
+	return nil
+}
+
 // DialContext dials addr, checking the resolved remote IP against Check at
 // connect time (via the dialer's Control hook) so that a DNS answer that
 // changes between resolution and connection cannot bypass the policy.
 func (p *Policy) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return dialChecked(ctx, network, addr, p.Check)
+}
+
+// DialDockerHost is DialContext for a configured Docker host; it applies
+// CheckDockerHost instead of Check.
+func DialDockerHost(ctx context.Context, network, addr string) (net.Conn, error) {
+	return dialChecked(ctx, network, addr, CheckDockerHost)
+}
+
+func dialChecked(ctx context.Context, network, addr string, check func(netip.Addr) error) (net.Conn, error) {
 	d := net.Dialer{
 		Control: func(_, address string, _ syscall.RawConn) error {
 			host, _, err := net.SplitHostPort(address)
@@ -126,7 +150,7 @@ func (p *Policy) DialContext(ctx context.Context, network, addr string) (net.Con
 			if err != nil {
 				return fmt.Errorf("%w: cannot parse address %q", ErrBlocked, address)
 			}
-			return p.Check(ip)
+			return check(ip)
 		},
 	}
 	return d.DialContext(ctx, network, addr)

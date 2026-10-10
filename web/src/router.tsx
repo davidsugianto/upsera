@@ -11,6 +11,8 @@ import { MonitorFormPage } from './pages/monitors/MonitorFormPage'
 import { MonitorDetailPage } from './pages/monitors/MonitorDetailPage'
 import { ChannelsPage } from './pages/channels/ChannelsPage'
 import { ChannelFormPage } from './pages/channels/ChannelFormPage'
+import { DockerHostsPage } from './pages/docker/DockerHostsPage'
+import { DockerHostFormPage } from './pages/docker/DockerHostFormPage'
 import { PoliciesPage } from './pages/policies/PoliciesPage'
 import { PolicyFormPage } from './pages/policies/PolicyFormPage'
 import { MaintenancePage } from './pages/maintenance/MaintenancePage'
@@ -35,6 +37,9 @@ export const router = createBrowserRouter([
       { path: 'channels', element: <ChannelsPage /> },
       { path: 'channels/new', element: <ChannelFormPage /> },
       { path: 'channels/:channelId/edit', element: <ChannelFormPage /> },
+      { path: 'docker-hosts', element: <DockerHostsPage /> },
+      { path: 'docker-hosts/new', element: <DockerHostFormPage /> },
+      { path: 'docker-hosts/:hostId/edit', element: <DockerHostFormPage /> },
       { path: 'policies', element: <PoliciesPage /> },
       { path: 'policies/new', element: <PolicyFormPage /> },
       { path: 'policies/:policyId/edit', element: <PolicyFormPage /> },

@@ -24,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/davidsugianto/upsera/internal/config"
+	"github.com/davidsugianto/upsera/internal/dockerapi"
 	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
@@ -55,6 +56,15 @@ type Alerting interface {
 	TestSend(ctx context.Context, ch model.Channel) error
 }
 
+// DockerRegistry is the in-memory set of Docker hosts the docker checker
+// reads. The API keeps it in sync with the store and uses it for the
+// connection test and the container picker.
+type DockerRegistry interface {
+	Upsert(model.DockerHost)
+	Remove(int64)
+	Client(teamID, hostID int64) (*dockerapi.Client, error)
+}
+
 // MaintenanceRegistry is the subset of the maintenance window registry the
 // API needs to keep in sync with the store.
 type MaintenanceRegistry interface {
@@ -68,6 +78,7 @@ type Deps struct {
 	Runner      Runner
 	Alerting    Alerting
 	Maintenance MaintenanceRegistry
+	Docker      DockerRegistry
 	Policy      *netpolicy.Policy
 	Config      config.Config
 	Logger      *slog.Logger
@@ -116,6 +127,9 @@ func OpenAPISpec(version string) ([]byte, error) {
 // newAPI builds the chi router with /healthz and every huma operation
 // registered.
 func newAPI(d Deps) (*chi.Mux, huma.API) {
+	if d.Docker == nil {
+		d.Docker = dockerapi.NewRegistry()
+	}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer, accessLogMiddleware(d.Logger))
 	r.Get("/healthz", healthzHandler(d))
@@ -200,6 +214,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	registerTeamRoutes(api, d)
 	registerMonitorRoutes(api, d)
 	registerChannelRoutes(api, d)
+	registerDockerHostRoutes(api, d)
 	registerPolicyRoutes(api, d)
 	registerAlertRoutes(api, d)
 	registerMaintenanceRoutes(api, d)

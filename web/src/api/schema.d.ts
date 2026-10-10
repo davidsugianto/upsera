@@ -250,6 +250,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/teams/{teamID}/docker-hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID docker hosts */
+        get: operations["get-api-teams-by-team-id-docker-hosts"];
+        put?: never;
+        /** Post API teams by team ID docker hosts */
+        post: operations["post-api-teams-by-team-id-docker-hosts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/docker-hosts/{hostID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID docker hosts by host ID */
+        get: operations["get-api-teams-by-team-id-docker-hosts-by-host-id"];
+        /** Put API teams by team ID docker hosts by host ID */
+        put: operations["put-api-teams-by-team-id-docker-hosts-by-host-id"];
+        post?: never;
+        /** Delete API teams by team ID docker hosts by host ID */
+        delete: operations["delete-api-teams-by-team-id-docker-hosts-by-host-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/docker-hosts/{hostID}/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID docker hosts by host ID containers */
+        get: operations["get-api-teams-by-team-id-docker-hosts-by-host-id-containers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/docker-hosts/{hostID}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post API teams by team ID docker hosts by host ID test */
+        post: operations["post-api-teams-by-team-id-docker-hosts-by-host-id-test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/teams/{teamID}/escalation-policies": {
         parameters: {
             query?: never;
@@ -674,6 +745,13 @@ export interface components {
             /** @enum {string} */
             type: "telegram" | "discord" | "slack" | "slack_app" | "smtp" | "webhook";
         };
+        Container: {
+            id: string;
+            image: string;
+            name: string;
+            state: string;
+            status: string;
+        };
         CreateAdminUserInputBody: {
             /**
              * Format: uri
@@ -725,6 +803,47 @@ export interface components {
             /** @enum {string} */
             scope: "read" | "write";
             token: string;
+        };
+        DockerHostBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/DockerHostBody.json
+             */
+            readonly $schema?: string;
+            config_error?: string;
+            /** Format: date-time */
+            created_at: string;
+            endpoint: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            team_id: number;
+            tls: components["schemas"]["DockerTLSBody"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DockerHostRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/DockerHostRequestBody.json
+             */
+            readonly $schema?: string;
+            endpoint: string;
+            name: string;
+            tls?: components["schemas"]["DockerTLSRequest"];
+        };
+        DockerTLSBody: {
+            ca: string;
+            cert: string;
+            key: string;
+        };
+        DockerTLSRequest: {
+            ca?: string;
+            cert?: string;
+            key?: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -827,6 +946,24 @@ export interface components {
              */
             readonly $schema?: string;
             channels: components["schemas"]["ChannelBody"][] | null;
+        };
+        ListContainersOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListContainersOutputBody.json
+             */
+            readonly $schema?: string;
+            containers: components["schemas"]["Container"][] | null;
+        };
+        ListDockerHostsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListDockerHostsOutputBody.json
+             */
+            readonly $schema?: string;
+            hosts: components["schemas"]["DockerHostBody"][] | null;
         };
         ListHeartbeatsOutputBody: {
             /**
@@ -1026,7 +1163,7 @@ export interface components {
             /** Format: int64 */
             timeout_s: number;
             /** @enum {string} */
-            type: "http" | "keyword" | "tcp" | "ping" | "dns" | "push";
+            type: "http" | "keyword" | "tcp" | "ping" | "dns" | "push" | "docker";
             /** Format: date-time */
             updated_at: string;
         };
@@ -1093,7 +1230,7 @@ export interface components {
              */
             timeout_s: number;
             /** @enum {string} */
-            type: "http" | "keyword" | "tcp" | "ping" | "dns" | "push";
+            type: "http" | "keyword" | "tcp" | "ping" | "dns" | "push" | "docker";
         };
         MonitorStateBody: {
             /** Format: int64 */
@@ -1231,6 +1368,15 @@ export interface components {
             name: string;
             /** @enum {string} */
             role: "owner" | "editor" | "viewer";
+        };
+        TestDockerHostOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/TestDockerHostOutputBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
         };
         TestSendChannelOutputBody: {
             /**
@@ -2031,6 +2177,234 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestSendChannelOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-docker-hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListDockerHostsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-docker-hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DockerHostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerHostBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-docker-hosts-by-host-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                hostID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerHostBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-api-teams-by-team-id-docker-hosts-by-host-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                hostID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DockerHostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerHostBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-teams-by-team-id-docker-hosts-by-host-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                hostID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-docker-hosts-by-host-id-containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                hostID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListContainersOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-docker-hosts-by-host-id-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                hostID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestDockerHostOutputBody"];
                 };
             };
             /** @description Error */

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davidsugianto/upsera/internal/dockerapi"
 	"github.com/davidsugianto/upsera/internal/model"
 )
 
@@ -63,6 +64,13 @@ type DNSConfig struct {
 	RecordType string `json:"record_type"`        // A, AAAA, CNAME, MX, TXT, NS
 	Resolver   string `json:"resolver,omitempty"` // "host:port"; empty uses the system resolver
 	Expected   string `json:"expected,omitempty"`
+}
+
+// DockerConfig configures docker monitors: a container (name or id) on a
+// configured Docker host of the monitor's team.
+type DockerConfig struct {
+	DockerHostID int64  `json:"docker_host_id"`
+	Container    string `json:"container"`
 }
 
 // PushConfig configures push monitors; it has no settings. The monitor goes
@@ -155,6 +163,22 @@ func ValidateConfig(t model.MonitorType, raw json.RawMessage) (json.RawMessage, 
 				return nil, errors.New("resolver port must be between 1 and 65535")
 			}
 			c.Resolver = net.JoinHostPort(host, port)
+		}
+		return json.Marshal(c)
+	case model.TypeDocker:
+		var c DockerConfig
+		if err := decodeStrict(raw, &c); err != nil {
+			return nil, err
+		}
+		if c.DockerHostID < 1 {
+			return nil, errors.New("docker_host_id is required")
+		}
+		c.Container = strings.TrimPrefix(strings.TrimSpace(c.Container), "/")
+		if c.Container == "" {
+			return nil, errors.New("container is required")
+		}
+		if !dockerapi.ValidContainer(c.Container) {
+			return nil, errors.New("container must be a container name or id (letters, digits, _ . -)")
 		}
 		return json.Marshal(c)
 	case model.TypePush:

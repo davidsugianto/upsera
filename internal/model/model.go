@@ -78,10 +78,11 @@ const (
 	TypePing    MonitorType = "ping"
 	TypeDNS     MonitorType = "dns"
 	TypePush    MonitorType = "push"
+	TypeDocker  MonitorType = "docker"
 )
 
 // MonitorTypes lists every supported type, in display order.
-var MonitorTypes = []MonitorType{TypeHTTP, TypeKeyword, TypeTCP, TypePing, TypeDNS, TypePush}
+var MonitorTypes = []MonitorType{TypeHTTP, TypeKeyword, TypeTCP, TypePing, TypeDNS, TypePush, TypeDocker}
 
 // Valid reports whether t is a supported monitor type.
 func (t MonitorType) Valid() bool {

@@ -15,6 +15,9 @@ import (
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 )
 
+// DescribeError is describeErr for callers outside the package.
+func DescribeError(err error, timeoutS int) string { return describeErr(err, timeoutS) }
+
 // describeErr turns a network error into a short, safe-to-store reason. It
 // never includes response bodies or full URLs.
 func describeErr(err error, timeoutS int) string {

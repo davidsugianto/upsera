@@ -7,6 +7,9 @@ import type {
   Channel,
   ChannelRequest,
   CreatedToken,
+  DockerContainer,
+  DockerHost,
+  DockerHostRequest,
   EscalationPolicy,
   Heartbeat,
   MaintenanceRequest,
@@ -39,6 +42,8 @@ export const keys = {
   alerts: (t: number, filter: AlertFilter) => ['alerts', t, filter] as const,
   alertsAll: (t: number) => ['alerts', t] as const,
   channels: (t: number) => ['channels', t] as const,
+  dockerHosts: (t: number) => ['dockerHosts', t] as const,
+  dockerContainers: (t: number, hostId: number) => ['dockerContainers', t, hostId] as const,
   policies: (t: number) => ['policies', t] as const,
   maintenance: (t: number) => ['maintenance', t] as const,
   members: (t: number) => ['members', t] as const,
@@ -301,6 +306,64 @@ export function useTestChannel(t: number) {
   return useMutation({
     mutationFn: (id: number) =>
       unwrap(client.POST('/api/teams/{teamID}/channels/{channelID}/test', { params: { path: { teamID: t, channelID: id } } })),
+  })
+}
+
+// ---- docker hosts ----
+
+export function useDockerHosts(t: number) {
+  return useQuery({
+    queryKey: keys.dockerHosts(t),
+    queryFn: async (): Promise<DockerHost[]> =>
+      (await unwrap(client.GET('/api/teams/{teamID}/docker-hosts', teamPath(t)))).hosts ?? [],
+  })
+}
+
+export function useSaveDockerHost(t: number) {
+  return useInvalidatingMutation(
+    ({ id, body }: { id?: number; body: DockerHostRequest }): Promise<DockerHost> =>
+      id === undefined
+        ? unwrap(client.POST('/api/teams/{teamID}/docker-hosts', { ...teamPath(t), body }))
+        : unwrap(
+            client.PUT('/api/teams/{teamID}/docker-hosts/{hostID}', {
+              params: { path: { teamID: t, hostID: id } },
+              body,
+            }),
+          ),
+    () => [keys.dockerHosts(t), ['dockerContainers', t]],
+  )
+}
+
+export function useDeleteDockerHost(t: number) {
+  return useInvalidatingMutation(
+    (id: number): Promise<void> =>
+      unwrap(client.DELETE('/api/teams/{teamID}/docker-hosts/{hostID}', { params: { path: { teamID: t, hostID: id } } })),
+    () => [keys.dockerHosts(t)],
+  )
+}
+
+export function useTestDockerHost(t: number) {
+  return useMutation({
+    mutationFn: (id: number) =>
+      unwrap(client.POST('/api/teams/{teamID}/docker-hosts/{hostID}/test', { params: { path: { teamID: t, hostID: id } } })),
+  })
+}
+
+/** useDockerContainers lists a host's containers for the picker; it only runs when hostId is set. */
+export function useDockerContainers(t: number, hostId: number | undefined) {
+  return useQuery({
+    queryKey: keys.dockerContainers(t, hostId ?? 0),
+    enabled: hostId !== undefined,
+    retry: false,
+    staleTime: 15_000,
+    queryFn: async (): Promise<DockerContainer[]> =>
+      (
+        await unwrap(
+          client.GET('/api/teams/{teamID}/docker-hosts/{hostID}/containers', {
+            params: { path: { teamID: t, hostID: hostId ?? 0 } },
+          }),
+        )
+      ).containers ?? [],
   })
 }
 

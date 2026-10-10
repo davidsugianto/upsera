@@ -251,6 +251,24 @@ func validateMonitorDeps(ctx context.Context, d Deps, teamID, selfID int64, pare
 	return nil
 }
 
+// validateDockerHost checks that a docker monitor's host exists in teamID.
+func validateDockerHost(ctx context.Context, d Deps, teamID int64, t model.MonitorType, cfg json.RawMessage) error {
+	if t != model.TypeDocker {
+		return nil
+	}
+	var c checker.DockerConfig
+	if err := json.Unmarshal(cfg, &c); err != nil {
+		return huma.Error422UnprocessableEntity("invalid config")
+	}
+	if _, err := d.Store.GetDockerHost(ctx, teamID, c.DockerHostID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return huma.Error422UnprocessableEntity("docker_host_id: docker host not found")
+		}
+		return mapStoreErr(d, err)
+	}
+	return nil
+}
+
 func registerMonitorRoutes(api huma.API, d Deps) {
 	huma.Get(api, "/api/teams/{teamID}/monitors", func(ctx context.Context, in *teamPathInput) (*listMonitorsOutput, error) {
 		if _, err := authorizeTeam(ctx, d, in.TeamID, model.RoleViewer); err != nil {
@@ -278,6 +296,9 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			return nil, err
 		}
 		if err := validateMonitorDeps(ctx, d, in.TeamID, 0, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
+			return nil, err
+		}
+		if err := validateDockerHost(ctx, d, in.TeamID, in.Body.Type, cfg); err != nil {
 			return nil, err
 		}
 		m := model.Monitor{
@@ -337,6 +358,9 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			return nil, err
 		}
 		if err := validateMonitorDeps(ctx, d, in.TeamID, in.MonitorID, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
+			return nil, err
+		}
+		if err := validateDockerHost(ctx, d, in.TeamID, in.Body.Type, cfg); err != nil {
 			return nil, err
 		}
 		m := model.Monitor{

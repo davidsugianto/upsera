@@ -24,6 +24,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/api"
 	"github.com/davidsugianto/upsera/internal/checker"
 	"github.com/davidsugianto/upsera/internal/config"
+	"github.com/davidsugianto/upsera/internal/dockerapi"
 	"github.com/davidsugianto/upsera/internal/events"
 	"github.com/davidsugianto/upsera/internal/jobs"
 	"github.com/davidsugianto/upsera/internal/maintenance"
@@ -132,6 +133,19 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	if err != nil {
 		return fmt.Errorf("load maintenance windows: %w", err)
 	}
+	// A team without Docker hosts gets DOCKER_HOST as "local" (setup does
+	// this for new instances; this covers instances set up before Phase 4).
+	if cfg.DockerHost != "" {
+		if h, ok, err := st.EnsureLocalDockerHost(ctx, cfg.DockerHost); err != nil {
+			log.Warn("seed local docker host", "error", err)
+		} else if ok {
+			log.Info("seeded docker host", "name", h.Name, "team_id", h.TeamID)
+		}
+	}
+	dockerHosts, err := st.ListAllDockerHosts(ctx)
+	if err != nil {
+		return fmt.Errorf("load docker hosts: %w", err)
+	}
 	openAlerts, err := st.ListOpenAlerts(ctx)
 	if err != nil {
 		return fmt.Errorf("load open alerts: %w", err)
@@ -158,7 +172,12 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		OnAlert:       func(a model.Alert) { hub.Publish(a.TeamID, a) },
 	})
 
-	sched := scheduler.New(st, checker.New(policy), scheduler.Options{
+	dreg := dockerapi.NewRegistry()
+	dreg.Set(dockerHosts)
+	chk := checker.New(policy)
+	chk.SetDockerHosts(dreg)
+
+	sched := scheduler.New(st, chk, scheduler.Options{
 		ProbeID:       probeID,
 		MaxConcurrent: cfg.MaxConcurrentChecks,
 		BufferSize:    cfg.HeartbeatBufferSize,
@@ -201,7 +220,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 
 	srv := &http.Server{
 		Handler: api.NewRouter(api.Deps{
-			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg,
+			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg, Docker: dreg,
 			Logger: log.With("component", "api"), Version: version, Events: hub, UI: web.Handler(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,

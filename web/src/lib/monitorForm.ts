@@ -32,6 +32,8 @@ export type MonitorForm = {
   tcp: { host: string; port: string }
   ping: { host: string; count: number }
   dns: { hostname: string; record_type: string; resolver: string; expected: string }
+  /** hostId '' = none chosen */
+  docker: { hostId: string; container: string }
 }
 
 export const monitorTypes: { value: MonitorType; label: string }[] = [
@@ -40,6 +42,7 @@ export const monitorTypes: { value: MonitorType; label: string }[] = [
   { value: 'tcp', label: 'TCP port' },
   { value: 'ping', label: 'Ping' },
   { value: 'dns', label: 'DNS' },
+  { value: 'docker', label: 'Docker container' },
   { value: 'push', label: 'Push (heartbeat)' },
 ]
 
@@ -74,6 +77,7 @@ export function defaultMonitorForm(type: MonitorType): MonitorForm {
     tcp: { host: '', port: '' },
     ping: { host: '', count: 3 },
     dns: { hostname: '', record_type: 'A', resolver: '', expected: '' },
+    docker: { hostId: '', container: '' },
   }
 }
 
@@ -130,6 +134,9 @@ export function monitorToForm(m: Monitor): MonitorForm {
         expected: str(c.expected),
       }
       break
+    case 'docker':
+      f.docker = { hostId: typeof c.docker_host_id === 'number' ? String(c.docker_host_id) : '', container: str(c.container) }
+      break
     case 'push':
       break
   }
@@ -171,6 +178,8 @@ export function configFor(f: MonitorForm): Obj {
       if (f.dns.expected.trim() !== '') c.expected = f.dns.expected.trim()
       return c
     }
+    case 'docker':
+      return { docker_host_id: Number(f.docker.hostId), container: f.docker.container.trim().replace(/^\//, '') }
     case 'push':
       return {}
   }
@@ -203,6 +212,10 @@ export function validateMonitorForm(f: MonitorForm): Record<string, string> {
   if (!(f.retry_interval_s >= 20)) e.retry_interval_s = 'Retry interval must be at least 20 seconds'
   if (!(f.timeout_s >= 1) || f.timeout_s >= f.interval_s) e.timeout_s = 'Timeout must be less than the interval'
   if (!(f.retries >= 0 && f.retries <= 10)) e.retries = 'Retries must be between 0 and 10'
+  if (f.type === 'docker') {
+    if (f.docker.hostId === '') e['config.docker_host_id'] = 'Choose a Docker host'
+    if (f.docker.container.trim() === '') e['config.container'] = 'Container is required'
+  }
   return e
 }
 
@@ -219,6 +232,8 @@ export function targetSummary(m: Pick<Monitor, 'type' | 'config'>): string {
       return str(c.host)
     case 'dns':
       return `${str(c.hostname)} ${str(c.record_type)}`.trim()
+    case 'docker':
+      return `docker: ${str(c.container)}`
     case 'push':
       return 'push'
   }

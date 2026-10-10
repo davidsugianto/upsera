@@ -1,9 +1,18 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { useChannels, useMonitor, useMonitors, usePolicies, useSaveMonitor } from '../../api/queries'
+import {
+  useChannels,
+  useDockerContainers,
+  useDockerHosts,
+  useMonitor,
+  useMonitors,
+  usePolicies,
+  useSaveMonitor,
+} from '../../api/queries'
 import type { MonitorType } from '../../api/types'
 import { Checkbox, KeyValueEditor, MultiCheck, NumberField, Select, TagInput, TextField } from '../../components/Fields'
 import { ErrorMessage, Loading, PageHeader, fieldError } from '../../components/ui'
+import { Link } from 'react-router'
 import { useNumberParam, useTeamId } from '../../hooks/useTeamId'
 import {
   defaultMonitorForm,
@@ -340,6 +349,8 @@ function TypeFields({
           />
         </div>
       )
+    case 'docker':
+      return <DockerFields form={form} set={set} err={err} />
     case 'push':
       return (
         <p className="border-t border-line pt-5 text-sm text-muted">
@@ -348,4 +359,88 @@ function TypeFields({
         </p>
       )
   }
+}
+
+/** DockerFields picks a Docker host, then a container from that host's list (or types a name). */
+function DockerFields({
+  form,
+  set,
+  err,
+}: {
+  form: MonitorForm
+  set: <K extends keyof MonitorForm>(key: K, value: MonitorForm[K]) => void
+  err: (name: string) => string | undefined
+}) {
+  const t = useTeamId()
+  const listId = useId()
+  const hosts = useDockerHosts(t)
+  const hostId = form.docker.hostId === '' ? undefined : Number(form.docker.hostId)
+  const containers = useDockerContainers(t, hostId)
+  const hostOptions = [
+    { value: '', label: hosts.data && hosts.data.length === 0 ? 'No Docker hosts yet' : 'Choose a host…' },
+    ...(hosts.data ?? []).map((h) => ({ value: String(h.id), label: `${h.name} (${h.endpoint})` })),
+  ]
+  const hostError = err('config.docker_host_id')
+  const containerError = err('config.container')
+  const running = new Set((containers.data ?? []).filter((c) => c.state === 'running').map((c) => c.name))
+
+  return (
+    <div className="space-y-5 border-t border-line pt-5">
+      <Select
+        label="Docker host"
+        value={form.docker.hostId}
+        onChange={(v) => set('docker', { hostId: v, container: v === form.docker.hostId ? form.docker.container : '' })}
+        options={hostOptions}
+        error={hostError}
+        help={
+          <>
+            Hosts are managed on the{' '}
+            <Link to={`/t/${t}/docker-hosts`} className="link">
+              Docker hosts
+            </Link>{' '}
+            page.
+          </>
+        }
+      />
+      <div>
+        <label htmlFor={`${listId}-input`} className="mb-1 block text-sm font-medium">
+          Container
+        </label>
+        <input
+          id={`${listId}-input`}
+          className="input"
+          list={listId}
+          value={form.docker.container}
+          placeholder={hostId === undefined ? 'Choose a host first' : 'Search or type a container name'}
+          disabled={hostId === undefined}
+          aria-invalid={containerError ? true : undefined}
+          onChange={(e) => set('docker', { ...form.docker, container: e.target.value })}
+        />
+        <datalist id={listId}>
+          {(containers.data ?? []).map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.image} · {c.status}
+            </option>
+          ))}
+        </datalist>
+        {containerError && <p className="mt-1 text-xs text-down">{containerError}</p>}
+        {!containerError && containers.error && (
+          <p className="mt-1 text-xs text-muted">
+            Could not list containers from this host; you can still type a container name or id.
+          </p>
+        )}
+        {!containerError && containers.data && form.docker.container !== '' && !running.has(form.docker.container) && (
+          <p className="mt-1 text-xs text-muted">
+            {containers.data.some((c) => c.name === form.docker.container)
+              ? 'This container is not running right now.'
+              : 'No container with this name was found on the host.'}
+          </p>
+        )}
+      </div>
+      <p className="text-xs text-muted">
+        UP while the container runs (and its healthcheck, if it has one, is healthy). Alerts say why: for example
+        &quot;exited (137)&quot; or &quot;unhealthy&quot;.
+      </p>
+    </div>
+  )
 }

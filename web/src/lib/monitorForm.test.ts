@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Monitor } from '../api/types'
-import { defaultMonitorForm, formToBody, monitorToForm } from './monitorForm'
+import { defaultMonitorForm, formToBody, monitorToForm, targetSummary, validateMonitorForm } from './monitorForm'
 
 describe('formToBody', () => {
   it('emits only http keys for http monitors', () => {
@@ -81,5 +81,42 @@ describe('monitorToForm', () => {
     const body = formToBody(monitorToForm(m))
     expect(body).toMatchObject({ name: 'api', group_name: 'prod', escalation_policy_id: 4, channel_ids: [1] })
     expect(body.config).toEqual(m.config)
+  })
+})
+
+describe('docker monitors', () => {
+  it('emits only docker keys and strips a leading slash', () => {
+    const f = defaultMonitorForm('docker')
+    f.name = 'web'
+    f.docker = { hostId: '3', container: ' /web-1 ' }
+    expect(formToBody(f).config).toEqual({ docker_host_id: 3, container: 'web-1' })
+  })
+  it('round trips through monitorToForm', () => {
+    const f = defaultMonitorForm('docker')
+    f.name = 'web'
+    f.docker = { hostId: '3', container: 'web-1' }
+    const body = formToBody(f)
+    const back = monitorToForm({
+      ...(body as object),
+      id: 1,
+      team_id: 1,
+      group_name: '',
+      parent_id: null,
+      escalation_policy_id: null,
+      state: null,
+    } as unknown as Monitor)
+    expect(back.docker).toEqual({ hostId: '3', container: 'web-1' })
+  })
+  it('requires a host and a container', () => {
+    const f = defaultMonitorForm('docker')
+    f.name = 'web'
+    const e = validateMonitorForm(f)
+    expect(e['config.docker_host_id']).toBeTruthy()
+    expect(e['config.container']).toBeTruthy()
+    f.docker = { hostId: '1', container: 'x' }
+    expect(validateMonitorForm(f)).toEqual({})
+  })
+  it('summarizes the target', () => {
+    expect(targetSummary({ type: 'docker', config: { docker_host_id: 1, container: 'web' } })).toBe('docker: web')
   })
 })

@@ -169,3 +169,22 @@ func TestValidateConfigUnknownType(t *testing.T) {
 		t.Fatalf("err = %v, want unknown monitor type error", err)
 	}
 }
+
+func TestValidateConfigDocker(t *testing.T) {
+	got, err := ValidateConfig(model.TypeDocker, json.RawMessage(`{"docker_host_id":3,"container":"/web-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"docker_host_id":3,"container":"web-1"}` {
+		t.Fatalf("normalized: %s", got)
+	}
+	for _, bad := range []string{
+		`{}`, `{"container":"web"}`, `{"docker_host_id":3}`, `{"docker_host_id":0,"container":"web"}`,
+		`{"docker_host_id":3,"container":"a/b"}`, `{"docker_host_id":3,"container":"../x"}`,
+		`{"docker_host_id":3,"container":"web","extra":1}`,
+	} {
+		if _, err := ValidateConfig(model.TypeDocker, json.RawMessage(bad)); err == nil {
+			t.Errorf("config %s should be rejected", bad)
+		}
+	}
+}

@@ -279,6 +279,7 @@ func registerAuthRoutes(api huma.API, d Deps, limiter *loginLimiter) {
 			return nil, mapStoreErr(d, err)
 		}
 		writeAudit(ctx, d, &team.ID, actor{userID: &user.ID}, "setup", "team", &team.ID, nil)
+		seedLocalDockerHost(ctx, d, team.ID)
 		body, err := buildMeBody(ctx, d, user, csrf)
 		if err != nil {
 			return nil, mapStoreErr(d, err)
@@ -343,4 +344,23 @@ func registerAuthRoutes(api huma.API, d Deps, limiter *loginLimiter) {
 		}
 		return &meOutput{Body: body}, nil
 	})
+}
+
+// seedLocalDockerHost registers the DOCKER_HOST endpoint as the host
+// "local" of the first team. Failure is logged, not fatal: setup itself has
+// already succeeded and the host can be added by hand.
+func seedLocalDockerHost(ctx context.Context, d Deps, teamID int64) {
+	if d.Config.DockerHost == "" || d.Docker == nil {
+		return
+	}
+	h, ok, err := d.Store.EnsureLocalDockerHost(ctx, d.Config.DockerHost)
+	if err != nil {
+		d.Logger.Warn("seed local docker host", "error", err)
+		return
+	}
+	if ok {
+		d.Docker.Upsert(h)
+		writeAudit(ctx, d, &teamID, actor{}, "docker_host.create", "docker_host", &h.ID,
+			map[string]any{"name": h.Name, "endpoint": h.Endpoint, "seeded": true})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/davidsugianto/upsera/internal/dockerapi"
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 )
@@ -13,7 +14,18 @@ import (
 // policy to every network operation it performs.
 type Checker struct {
 	policy *netpolicy.Policy
+	docker DockerHosts
 }
+
+// DockerHosts resolves the Docker host a docker monitor reads from. The
+// host must belong to teamID. Lookups must not touch the database.
+type DockerHosts interface {
+	Client(teamID, hostID int64) (*dockerapi.Client, error)
+}
+
+// SetDockerHosts sets where docker monitors find their hosts. Without it
+// every docker check fails.
+func (c *Checker) SetDockerHosts(h DockerHosts) { c.docker = h }
 
 // New builds a Checker that dials through p.
 func New(p *netpolicy.Policy) *Checker {
@@ -48,6 +60,8 @@ func (c *Checker) Check(ctx context.Context, m model.Monitor) (result Result) {
 		result = c.checkPing(ctx, m, timeoutS)
 	case model.TypeDNS:
 		result = c.checkDNS(ctx, m, timeoutS)
+	case model.TypeDocker:
+		result = c.checkDocker(ctx, m, timeoutS)
 	case model.TypePush:
 		result = Result{Status: model.StatusDown, Message: "push monitors are not actively checked"}
 	default:
