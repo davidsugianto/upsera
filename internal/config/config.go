@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -33,6 +34,14 @@ type Config struct {
 
 	FlushInterval time.Duration // HEARTBEAT_FLUSH_INTERVAL, default 1s
 	RollupEvery   time.Duration // ROLLUP_INTERVAL, default 1h
+	// IncidentDraftAfter is how long a monitor listed on a published status
+	// page must have an open alert before an incident is auto-drafted
+	// (INCIDENT_DRAFT_AFTER, default 5m).
+	IncidentDraftAfter time.Duration
+	// TrustedProxies are the reverse proxies (CIDRs or single addresses,
+	// TRUSTED_PROXIES, comma separated) whose X-Forwarded-For header is
+	// believed when working out a visitor's address for public rate limits.
+	TrustedProxies []netip.Prefix
 }
 
 // Load reads the configuration from the process environment.
@@ -82,6 +91,23 @@ func load(getenv func(string) string) (Config, error) {
 	c.MaxConcurrentChecks = intVar("MAX_CONCURRENT_CHECKS", 100, 1)
 	c.FlushInterval = durVar("HEARTBEAT_FLUSH_INTERVAL", time.Second, 100*time.Millisecond)
 	c.RollupEvery = durVar("ROLLUP_INTERVAL", time.Hour, time.Minute)
+	c.IncidentDraftAfter = durVar("INCIDENT_DRAFT_AFTER", 5*time.Minute, time.Second)
+	for _, raw := range strings.Split(getenv("TRUSTED_PROXIES"), ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(raw)
+		if err != nil {
+			a, aerr := netip.ParseAddr(raw)
+			if aerr != nil {
+				errs = append(errs, fmt.Errorf("TRUSTED_PROXIES must be comma separated addresses or CIDRs, got %q", raw))
+				continue
+			}
+			p = netip.PrefixFrom(a, a.BitLen())
+		}
+		c.TrustedProxies = append(c.TrustedProxies, p.Masked())
+	}
 	c.TimeZone = orDefault(getenv("TZ"), "UTC")
 	if _, err := time.LoadLocation(c.TimeZone); err != nil {
 		errs = append(errs, fmt.Errorf("TZ must be an IANA time zone like Asia/Jakarta, got %q", c.TimeZone))

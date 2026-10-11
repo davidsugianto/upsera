@@ -12,6 +12,10 @@ import type {
   DockerHostRequest,
   EscalationPolicy,
   Heartbeat,
+  Incident,
+  IncidentEditRequest,
+  IncidentRequest,
+  IncidentUpdateRequest,
   MaintenanceRequest,
   MaintenanceWindow,
   Me,
@@ -22,10 +26,15 @@ import type {
   PolicyRequest,
   Role,
   Settings,
+  SettingsUpdate,
   StatusEvent,
+  StatusPage,
+  StatusPageRequest,
+  Subscriber,
   Team,
   Token,
   UptimeSummary,
+  WebhookSubscriberRequest,
 } from './types'
 
 /** Query keys. The second element of every team-scoped key is the team id. */
@@ -48,6 +57,9 @@ export const keys = {
   maintenance: (t: number) => ['maintenance', t] as const,
   members: (t: number) => ['members', t] as const,
   tokens: (t: number) => ['tokens', t] as const,
+  statusPages: (t: number) => ['statusPages', t] as const,
+  incidents: (t: number, pageId: number) => ['incidents', t, pageId] as const,
+  subscribers: (t: number, pageId: number) => ['subscribers', t, pageId] as const,
   adminUsers: ['adminUsers'] as const,
   adminSettings: ['adminSettings'] as const,
 }
@@ -520,15 +532,190 @@ export function useCreateAdminUser() {
 export function useAdminSettings(enabled = true) {
   return useQuery({
     queryKey: keys.adminSettings,
-    queryFn: (): Promise<Settings> => unwrap(client.GET('/api/admin/settings')),
+    queryFn: async (): Promise<Settings> => (await unwrap(client.GET('/api/admin/settings'))) as Settings,
     enabled,
   })
 }
 
 export function useSaveAdminSettings() {
   return useInvalidatingMutation(
-    (body: { block_private_targets: boolean; retention_days?: number }): Promise<Settings> =>
-      unwrap(client.PUT('/api/admin/settings', { body })),
+    async (body: SettingsUpdate): Promise<Settings> =>
+      // The generated type for `smtp` is a placeholder (Record<string, never>), so it is cast here.
+      (await unwrap(
+        client.PUT('/api/admin/settings', {
+          body: { ...body, smtp: body.smtp as Record<string, never> | null | undefined },
+        }),
+      )) as Settings,
     () => [keys.adminSettings],
+  )
+}
+
+/** useTestSmtp sends a test message through the saved SMTP settings. */
+export function useTestSmtp() {
+  return useMutation({
+    mutationFn: (to: string) => unwrap(client.POST('/api/admin/settings/smtp/test', { body: { to } })),
+  })
+}
+
+// ---- status pages ----
+
+export function useStatusPages(t: number) {
+  return useQuery({
+    queryKey: keys.statusPages(t),
+    queryFn: async (): Promise<StatusPage[]> =>
+      (await unwrap(client.GET('/api/teams/{teamID}/status-pages', teamPath(t)))).pages ?? [],
+  })
+}
+
+export function useSaveStatusPage(t: number) {
+  return useInvalidatingMutation(
+    ({ id, body }: { id?: number; body: StatusPageRequest }): Promise<StatusPage> =>
+      id === undefined
+        ? unwrap(client.POST('/api/teams/{teamID}/status-pages', { ...teamPath(t), body }))
+        : unwrap(
+            client.PUT('/api/teams/{teamID}/status-pages/{pageID}', {
+              params: { path: { teamID: t, pageID: id } },
+              body,
+            }),
+          ),
+    () => [keys.statusPages(t)],
+  )
+}
+
+export function useDeleteStatusPage(t: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number): Promise<void> =>
+      unwrap(client.DELETE('/api/teams/{teamID}/status-pages/{pageID}', { params: { path: { teamID: t, pageID: id } } })),
+    onSuccess: (_r, id) => {
+      qc.removeQueries({ queryKey: keys.incidents(t, id) })
+      qc.removeQueries({ queryKey: keys.subscribers(t, id) })
+      return qc.invalidateQueries({ queryKey: keys.statusPages(t) })
+    },
+  })
+}
+
+// ---- incidents ----
+
+const incidentPath = (teamID: number, pageID: number, incidentID: number) => ({
+  params: { path: { teamID, pageID, incidentID } },
+})
+
+/** useIncidents lists a page's incidents, drafts included, newest first. */
+export function useIncidents(t: number, pageId: number) {
+  return useQuery({
+    queryKey: keys.incidents(t, pageId),
+    queryFn: async (): Promise<Incident[]> =>
+      (
+        await unwrap(
+          client.GET('/api/teams/{teamID}/status-pages/{pageID}/incidents', {
+            params: { path: { teamID: t, pageID: pageId } },
+          }),
+        )
+      ).incidents ?? [],
+  })
+}
+
+export function useCreateIncident(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    (body: IncidentRequest): Promise<Incident> =>
+      unwrap(
+        client.POST('/api/teams/{teamID}/status-pages/{pageID}/incidents', {
+          params: { path: { teamID: t, pageID: pageId } },
+          body,
+        }),
+      ),
+    () => [keys.incidents(t, pageId)],
+  )
+}
+
+export function useEditIncident(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    ({ id, body }: { id: number; body: IncidentEditRequest }): Promise<Incident> =>
+      unwrap(
+        client.PUT('/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}', {
+          ...incidentPath(t, pageId, id),
+          body,
+        }),
+      ),
+    () => [keys.incidents(t, pageId)],
+  )
+}
+
+export function useAddIncidentUpdate(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    ({ id, body }: { id: number; body: IncidentUpdateRequest }): Promise<Incident> =>
+      unwrap(
+        client.POST('/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}/updates', {
+          ...incidentPath(t, pageId, id),
+          body,
+        }),
+      ),
+    () => [keys.incidents(t, pageId)],
+  )
+}
+
+/** usePublishIncident publishes a draft; this notifies the page's confirmed subscribers. */
+export function usePublishIncident(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    (id: number): Promise<Incident> =>
+      unwrap(
+        client.POST(
+          '/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}/publish',
+          incidentPath(t, pageId, id),
+        ),
+      ),
+    () => [keys.incidents(t, pageId)],
+  )
+}
+
+export function useDeleteIncident(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    (id: number): Promise<void> =>
+      unwrap(
+        client.DELETE('/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}', incidentPath(t, pageId, id)),
+      ),
+    () => [keys.incidents(t, pageId)],
+  )
+}
+
+// ---- subscribers ----
+
+export function useSubscribers(t: number, pageId: number) {
+  return useQuery({
+    queryKey: keys.subscribers(t, pageId),
+    queryFn: async (): Promise<Subscriber[]> =>
+      (
+        await unwrap(
+          client.GET('/api/teams/{teamID}/status-pages/{pageID}/subscribers', {
+            params: { path: { teamID: t, pageID: pageId } },
+          }),
+        )
+      ).subscribers ?? [],
+  })
+}
+
+export function useAddWebhookSubscriber(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    (body: WebhookSubscriberRequest): Promise<Subscriber> =>
+      unwrap(
+        client.POST('/api/teams/{teamID}/status-pages/{pageID}/subscribers', {
+          params: { path: { teamID: t, pageID: pageId } },
+          body,
+        }),
+      ),
+    () => [keys.subscribers(t, pageId)],
+  )
+}
+
+export function useDeleteSubscriber(t: number, pageId: number) {
+  return useInvalidatingMutation(
+    (subscriberID: number): Promise<void> =>
+      unwrap(
+        client.DELETE('/api/teams/{teamID}/status-pages/{pageID}/subscribers/{subscriberID}', {
+          params: { path: { teamID: t, pageID: pageId, subscriberID } },
+        }),
+      ),
+    () => [keys.subscribers(t, pageId)],
   )
 }

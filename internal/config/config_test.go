@@ -22,7 +22,8 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if c.Port != 3080 || c.DBMaxConns != 10 || c.HeartbeatBufferSize != 100000 || c.RetentionDays != 14 ||
 		c.TimeZone != "UTC" || c.FlushInterval != time.Second || c.BaseURL != "http://localhost:3080" ||
-		c.TelegramAPIURL != "https://api.telegram.org" || c.SlackAPIURL != "https://slack.com/api" {
+		c.TelegramAPIURL != "https://api.telegram.org" || c.SlackAPIURL != "https://slack.com/api" ||
+		c.IncidentDraftAfter != 5*time.Minute {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 	if c.SecureCookies() {
@@ -45,6 +46,9 @@ func TestLoadRejects(t *testing.T) {
 		"bad flush interval":   {map[string]string{"HEARTBEAT_FLUSH_INTERVAL": "1ms"}, "HEARTBEAT_FLUSH_INTERVAL"},
 		"bad telegram api url": {map[string]string{"TELEGRAM_API_URL": "telegram.example.com"}, "TELEGRAM_API_URL"},
 		"bad slack api url":    {map[string]string{"SLACK_API_URL": "slack.example.com"}, "SLACK_API_URL"},
+		"bad draft delay":      {map[string]string{"INCIDENT_DRAFT_AFTER": "1ms"}, "INCIDENT_DRAFT_AFTER"},
+		"bad trusted proxy":    {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/8, nope"}, "TRUSTED_PROXIES"},
+		"bad proxy prefix len": {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/33"}, "TRUSTED_PROXIES"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -82,5 +86,27 @@ func TestTelegramAndSlackAPIURLTrimTrailingSlash(t *testing.T) {
 	}
 	if c.TelegramAPIURL != "https://telegram.example.com" || c.SlackAPIURL != "https://slack.example.com" {
 		t.Fatalf("got telegram=%q slack=%q", c.TelegramAPIURL, c.SlackAPIURL)
+	}
+}
+
+func TestTrustedProxies(t *testing.T) {
+	c, err := load(env(valid()))
+	if err != nil || len(c.TrustedProxies) != 0 {
+		t.Fatalf("default: %v %v", c.TrustedProxies, err)
+	}
+	m := valid()
+	m["TRUSTED_PROXIES"] = " 10.0.0.0/8, 192.168.1.5 ,fd00::/8,, 172.18.0.2/32 "
+	c, err = load(env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"10.0.0.0/8", "192.168.1.5/32", "fd00::/8", "172.18.0.2/32"}
+	if len(c.TrustedProxies) != len(want) {
+		t.Fatalf("TrustedProxies = %v", c.TrustedProxies)
+	}
+	for i, p := range c.TrustedProxies {
+		if p.String() != want[i] {
+			t.Errorf("proxy %d = %v, want %v", i, p, want[i])
+		}
 	}
 }

@@ -55,6 +55,9 @@ export function Layout({ teamId, children }: { teamId?: number; children: ReactN
                 <NavLink to={`${base}/docker-hosts`} className={link}>
                   Docker hosts
                 </NavLink>
+                <NavLink to={`${base}/status-pages`} className={link}>
+                  Status pages
+                </NavLink>
                 <NavLink to={`${base}/policies`} className={link}>
                   Escalation policies
                 </NavLink>

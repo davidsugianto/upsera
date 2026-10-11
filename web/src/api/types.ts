@@ -30,10 +30,32 @@ export type TeamSummary = S['MeTeam']
 export type Team = S['TeamBody']
 export type Me = S['MeBody']
 export type AdminUser = S['AdminUserBody']
-export type Settings = S['SettingsBody']
+export type SmtpSettings = S['SmtpBody']
+/** Instance settings as served: smtp is null until a mail server is configured. */
+export type Settings = Omit<S['SettingsBody'], 'smtp'> & { smtp: SmtpSettings | null }
+/** SettingsUpdate is the PUT body: smtp omitted keeps the mail server, null removes it. */
+export type SettingsUpdate = {
+  block_private_targets: boolean
+  retention_days?: number
+  smtp?: SmtpSettings | null
+}
 export type OverviewItem = S['MonitorOverviewItem']
 export type UptimeSummary = S['UptimeSummaryOutputBody']
 export type StatusEvent = S['StatusEventBody']
+export type StatusPage = S['StatusPageBody']
+export type StatusPageRequest = S['StatusPageRequestBody']
+export type StatusPageItem = S['StatusPageItemBody']
+export type StatusPageItemRequest = S['StatusPageItemRequest']
+export type Theme = NonNullable<S['StatusPageRequestBody']['theme']>
+export type Incident = S['IncidentBody']
+export type IncidentUpdate = S['IncidentUpdateBody']
+export type IncidentRequest = S['IncidentRequestBody']
+export type IncidentEditRequest = S['IncidentEditRequestBody']
+export type IncidentUpdateRequest = S['IncidentUpdateRequestBody']
+export type IncidentStatus = S['IncidentBody']['status']
+export type IncidentSeverity = S['IncidentBody']['severity']
+export type Subscriber = S['SubscriberBody']
+export type WebhookSubscriberRequest = S['WebhookSubscriberRequestBody']
 
 /** SSE `monitor` event: a monitor changed state. */
 export type MonitorEvent = {

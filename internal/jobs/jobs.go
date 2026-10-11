@@ -1,6 +1,6 @@
 // Package jobs runs the periodic maintenance tasks: the daily uptime
-// rollup, heartbeat retention pruning, expired-session cleanup and
-// notification log pruning.
+// rollup, heartbeat retention pruning, expired-session cleanup, notification
+// log pruning and status page subscriber/delivery cleanup.
 package jobs
 
 import (
@@ -25,6 +25,20 @@ type Store interface {
 	PruneNotificationLog(ctx context.Context, before time.Time) (int64, error)
 	GetInstanceSettings(ctx context.Context) (model.InstanceSettings, error)
 }
+
+// statusPurger is the optional part of the store that cleans up status page
+// data; a Store that does not implement it skips that step.
+type statusPurger interface {
+	PurgeUnconfirmedSubscribers(ctx context.Context, before time.Time) (int64, error)
+	PurgeDeliveries(ctx context.Context, before time.Time) (int64, error)
+}
+
+// unconfirmedSubscriberTTL is how long a subscriber may stay unconfirmed;
+// finishedDeliveryRetention is how long sent or failed deliveries are kept.
+const (
+	unconfirmedSubscriberTTL  = 7 * 24 * time.Hour
+	finishedDeliveryRetention = 30 * 24 * time.Hour
+)
 
 // Options configures Run.
 type Options struct {
@@ -110,6 +124,21 @@ func tick(ctx context.Context, st Store, opts Options, log *slog.Logger) {
 		log.Warn("jobs: prune notification log failed", "error", err)
 	} else {
 		log.Info("jobs: pruned notification log", "rows", logs)
+	}
+
+	if sp, ok := st.(statusPurger); ok {
+		subs, err := sp.PurgeUnconfirmedSubscribers(ctx, time.Now().Add(-unconfirmedSubscriberTTL))
+		if err != nil {
+			log.Warn("jobs: purge unconfirmed subscribers failed", "error", err)
+		} else {
+			log.Info("jobs: purged unconfirmed subscribers", "rows", subs)
+		}
+		dels, err := sp.PurgeDeliveries(ctx, time.Now().Add(-finishedDeliveryRetention))
+		if err != nil {
+			log.Warn("jobs: purge subscriber deliveries failed", "error", err)
+		} else {
+			log.Info("jobs: purged subscriber deliveries", "rows", dels)
+		}
 	}
 }
 

@@ -33,6 +33,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/notify"
 	"github.com/davidsugianto/upsera/internal/scheduler"
 	"github.com/davidsugianto/upsera/internal/secret"
+	"github.com/davidsugianto/upsera/internal/statuspage"
 	"github.com/davidsugianto/upsera/internal/store"
 	"github.com/davidsugianto/upsera/web"
 )
@@ -206,6 +207,24 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	}, sched)
 	log.Info("scheduler started", "monitors", len(monitors))
 
+	pages := statuspage.New(statuspage.Options{
+		Store: st, States: sched, Secret: []byte(cfg.AppSecret), BaseURL: cfg.BaseURL, Loc: loc,
+		Policy: policy, Logger: log.With("component", "statuspage"), DraftAfter: cfg.IncidentDraftAfter,
+		TrustedProxies: cfg.TrustedProxies,
+	})
+	if err := pages.ReloadDomains(ctx); err != nil {
+		return fmt.Errorf("load status page domains: %w", err)
+	}
+	// Like the scheduler, the status page worker is stopped explicitly, so a
+	// delivery in flight finishes before the database closes.
+	pagesCtx, cancelPages := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelPages()
+	pagesDone := make(chan struct{})
+	go func() {
+		defer close(pagesDone)
+		pages.Run(pagesCtx)
+	}()
+
 	jobsDone := make(chan struct{})
 	go func() {
 		defer close(jobsDone)
@@ -220,7 +239,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 
 	srv := &http.Server{
 		Handler: api.NewRouter(api.Deps{
-			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg, Docker: dreg,
+			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg, Docker: dreg, StatusPages: pages, Public: pages,
 			Logger: log.With("component", "api"), Version: version, Events: hub, UI: web.Handler(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -238,6 +257,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		if !errors.Is(err, http.ErrServerClosed) {
 			cancelSched()
 			cancelEngine()
+			cancelPages()
 			return fmt.Errorf("http server: %w", err)
 		}
 	}
@@ -254,6 +274,8 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	if err := engine.Shutdown(shutdownCtx); err != nil {
 		log.Warn("alerting shutdown", "err", err)
 	}
+	cancelPages()
+	<-pagesDone
 	<-jobsDone
 	log.Info("stopped")
 	return nil

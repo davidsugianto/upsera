@@ -228,3 +228,51 @@ func TestRunOnSettingsNotInvokedOnError(t *testing.T) {
 		t.Fatalf("OnSettings calls = %d, want 0 when settings failed to load", calls)
 	}
 }
+
+// purgingStore is a fakeStore that also implements the optional status page
+// cleanup.
+type purgingStore struct {
+	*fakeStore
+	subsBefore, delsBefore time.Time
+	subsErr                error
+}
+
+func (p *purgingStore) PurgeUnconfirmedSubscribers(_ context.Context, before time.Time) (int64, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.order = append(p.order, "subscribers")
+	p.subsBefore = before
+	return 0, p.subsErr
+}
+
+func (p *purgingStore) PurgeDeliveries(_ context.Context, before time.Time) (int64, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.order = append(p.order, "deliveries")
+	p.delsBefore = before
+	return 0, nil
+}
+
+func TestRunPurgesStatusPageData(t *testing.T) {
+	st := &purgingStore{fakeStore: &fakeStore{}, subsErr: errors.New("boom")}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, st, Options{Every: time.Hour, DefaultRetentionDays: 14, TZ: "UTC"})
+		close(done)
+	}()
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	<-done
+
+	order := st.callOrder()
+	if len(order) < 2 || order[len(order)-2] != "subscribers" || order[len(order)-1] != "deliveries" {
+		t.Fatalf("call order = %v; want the status page purge last, and a failing subscriber purge must not stop the delivery purge", order)
+	}
+	if d := time.Since(st.subsBefore); d < 7*24*time.Hour-time.Minute || d > 7*24*time.Hour+time.Minute {
+		t.Fatalf("unconfirmed subscribers cutoff is %v old, want 7 days", d)
+	}
+	if d := time.Since(st.delsBefore); d < 30*24*time.Hour-time.Minute || d > 30*24*time.Hour+time.Minute {
+		t.Fatalf("deliveries cutoff is %v old, want 30 days", d)
+	}
+}

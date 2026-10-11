@@ -2,24 +2,15 @@ package notify
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"mime"
-	"net"
 	"net/mail"
-	"net/smtp"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 )
-
-const smtpTimeout = 10 * time.Second
 
 type smtpConfig struct {
 	Host     string   `json:"host"`
@@ -78,96 +69,7 @@ func (n *smtpNotifier) Send(ctx context.Context, cfg json.RawMessage, ev Event) 
 	if err != nil {
 		return err
 	}
-	addr := net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
-	var conn net.Conn
-	if n.policy != nil {
-		conn, err = n.policy.DialContext(ctx, "tcp", addr)
-	} else {
-		var d net.Dialer
-		conn, err = d.DialContext(ctx, "tcp", addr)
-	}
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	// net/smtp ignores ctx: closing the connection on cancellation
-	// interrupts the exchange (e.g. when the dispatcher is shutting down).
-	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
-	deadline := time.Now().Add(smtpTimeout)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
-	}
-	_ = conn.SetDeadline(deadline)
-	if c.TLS == "tls" {
-		conn = tls.Client(conn, &tls.Config{ServerName: c.Host})
-	}
-
-	cl, err := smtp.NewClient(conn, c.Host)
-	if err != nil {
-		return err
-	}
-	defer cl.Close()
-	if c.TLS == "starttls" {
-		if err := cl.StartTLS(&tls.Config{ServerName: c.Host}); err != nil {
-			return err
-		}
-	}
-	if c.Username != "" {
-		if err := cl.Auth(smtp.PlainAuth("", c.Username, c.Password, c.Host)); err != nil {
-			return err
-		}
-	}
-	from, _ := mail.ParseAddress(c.From)
-	if err := cl.Mail(from.Address); err != nil {
-		return err
-	}
-	for _, to := range c.To {
-		a, _ := mail.ParseAddress(to)
-		if err := cl.Rcpt(a.Address); err != nil {
-			return err
-		}
-	}
-	w, err := cl.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(buildMessage(c, ev)); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return cl.Quit()
-}
-
-// buildMessage renders the RFC 5322 message with CRLF line endings.
-// Header values come from validated addresses and the title; CR/LF are
-// stripped from the subject so a monitor name cannot inject headers.
-func buildMessage(c smtpConfig, ev Event) []byte {
-	subject := strings.NewReplacer("\r", " ", "\n", " ").Replace(Title(ev))
-	var b strings.Builder
-	h := func(k, v string) { b.WriteString(k + ": " + v + "\r\n") }
-	h("From", c.From)
-	h("To", strings.Join(c.To, ", "))
-	h("Subject", mimeHeader(subject))
-	h("Date", time.Now().Format(time.RFC1123Z))
-	h("Message-ID", "<"+uuid.NewString()+"@upsera>")
-	h("MIME-Version", "1.0")
-	h("Content-Type", "text/plain; charset=utf-8")
-	b.WriteString("\r\n")
-	body := strings.ReplaceAll(Body(ev), "\r\n", "\n")
-	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
-	b.WriteString("\r\n")
-	return []byte(b.String())
-}
-
-// mimeHeader Q-encodes s only when it is not plain ASCII.
-func mimeHeader(s string) string {
-	for _, r := range s {
-		if r >= 0x80 {
-			return mime.QEncoding.Encode("utf-8", s)
-		}
-	}
-	return s
+	return SendMail(ctx, n.policy, model.SMTPSettings{
+		Host: c.Host, Port: c.Port, Username: c.Username, Password: c.Password, From: c.From, TLS: c.TLS,
+	}, c.To, Title(ev), Body(ev))
 }

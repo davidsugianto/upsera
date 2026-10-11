@@ -1,0 +1,7 @@
+{{define "incident"}}<article class="incident card" id="incident-{{.ID}}">
+<h3>{{.Title}}</h3>
+<p class="meta"><span class="tag sev-{{.Severity}}">{{.SeverityLabel}}</span><span class="tag">{{.StatusLabel}}</span><time datetime="{{.StartedISO}}">{{.Started}}</time>{{if .Resolved}} &ndash; resolved <time datetime="{{.ResolvedISO}}">{{.Resolved}}</time>{{end}}</p>
+{{if .Updates}}<ol class="timeline">
+{{range .Updates}}<li><p class="u-head"><strong>{{.StatusLabel}}</strong> &middot; <time datetime="{{.TimeISO}}">{{.Time}}</time></p>{{if .Body}}<p class="body">{{.Body}}</p>{{end}}</li>
+{{end}}</ol>{{end}}
+</article>{{end}}

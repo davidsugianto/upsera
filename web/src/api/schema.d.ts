@@ -22,6 +22,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/settings/smtp/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post API admin settings SMTP test */
+        post: operations["post-api-admin-settings-smtp-test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -590,6 +607,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/teams/{teamID}/status-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID status pages */
+        get: operations["get-api-teams-by-team-id-status-pages"];
+        put?: never;
+        /** Post API teams by team ID status pages */
+        post: operations["post-api-teams-by-team-id-status-pages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID status pages by page ID */
+        get: operations["get-api-teams-by-team-id-status-pages-by-page-id"];
+        /** Put API teams by team ID status pages by page ID */
+        put: operations["put-api-teams-by-team-id-status-pages-by-page-id"];
+        post?: never;
+        /** Delete API teams by team ID status pages by page ID */
+        delete: operations["delete-api-teams-by-team-id-status-pages-by-page-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID status pages by page ID incidents */
+        get: operations["get-api-teams-by-team-id-status-pages-by-page-id-incidents"];
+        put?: never;
+        /** Post API teams by team ID status pages by page ID incidents */
+        post: operations["post-api-teams-by-team-id-status-pages-by-page-id-incidents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put API teams by team ID status pages by page ID incidents by incident ID */
+        put: operations["put-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id"];
+        post?: never;
+        /** Delete API teams by team ID status pages by page ID incidents by incident ID */
+        delete: operations["delete-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post API teams by team ID status pages by page ID incidents by incident ID publish */
+        post: operations["post-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id-publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/incidents/{incidentID}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post API teams by team ID status pages by page ID incidents by incident ID updates */
+        post: operations["post-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id-updates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID status pages by page ID subscribers */
+        get: operations["get-api-teams-by-team-id-status-pages-by-page-id-subscribers"];
+        put?: never;
+        /** Post API teams by team ID status pages by page ID subscribers */
+        post: operations["post-api-teams-by-team-id-status-pages-by-page-id-subscribers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/status-pages/{pageID}/subscribers/{subscriberID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete API teams by team ID status pages by page ID subscribers by subscriber ID */
+        delete: operations["delete-api-teams-by-team-id-status-pages-by-page-id-subscribers-by-subscriber-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/teams/{teamID}/tokens": {
         parameters: {
             query?: never;
@@ -911,6 +1070,93 @@ export interface components {
             /** Format: date-time */
             time: string;
         };
+        IncidentBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/IncidentBody.json
+             */
+            readonly $schema?: string;
+            /** @description Created automatically from an alert. */
+            auto: boolean;
+            /** Format: date-time */
+            created_at: string;
+            draft: boolean;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            page_id: number;
+            /** Format: date-time */
+            published_at: string | null;
+            /** Format: date-time */
+            resolved_at: string | null;
+            /** @enum {string} */
+            severity: "minor" | "major" | "critical";
+            /** Format: date-time */
+            started_at: string;
+            /** @enum {string} */
+            status: "investigating" | "identified" | "monitoring" | "resolved";
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            updates: components["schemas"]["IncidentUpdateBody"][] | null;
+        };
+        IncidentEditRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/IncidentEditRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            severity: "minor" | "major" | "critical";
+            title: string;
+        };
+        IncidentRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/IncidentRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Text of the first timeline entry. */
+            body?: string;
+            /** @description Keep the incident private until it is published. */
+            draft?: boolean;
+            /** @enum {string} */
+            severity: "minor" | "major" | "critical";
+            /**
+             * Format: date-time
+             * @description Defaults to now.
+             */
+            started_at?: string;
+            /**
+             * @description Defaults to investigating.
+             * @enum {string}
+             */
+            status?: "investigating" | "identified" | "monitoring" | "resolved";
+            title: string;
+        };
+        IncidentUpdateBody: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            status: "investigating" | "identified" | "monitoring" | "resolved";
+        };
+        IncidentUpdateRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/IncidentUpdateRequestBody.json
+             */
+            readonly $schema?: string;
+            body: string;
+            /** @enum {string} */
+            status: "investigating" | "identified" | "monitoring" | "resolved";
+        };
         ListAdminUsersOutputBody: {
             /**
              * Format: uri
@@ -974,6 +1220,15 @@ export interface components {
             readonly $schema?: string;
             heartbeats: components["schemas"]["HeartbeatBody"][] | null;
         };
+        ListIncidentsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListIncidentsOutputBody.json
+             */
+            readonly $schema?: string;
+            incidents: components["schemas"]["IncidentBody"][] | null;
+        };
         ListMaintenanceWindowsOutputBody: {
             /**
              * Format: uri
@@ -1018,6 +1273,24 @@ export interface components {
              */
             readonly $schema?: string;
             escalation_policies: components["schemas"]["PolicyBody"][] | null;
+        };
+        ListStatusPagesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListStatusPagesOutputBody.json
+             */
+            readonly $schema?: string;
+            pages: components["schemas"]["StatusPageBody"][] | null;
+        };
+        ListSubscribersOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListSubscribersOutputBody.json
+             */
+            readonly $schema?: string;
+            subscribers: components["schemas"]["SubscriberBody"][] | null;
         };
         ListTeamsOutputBody: {
             /**
@@ -1313,6 +1586,8 @@ export interface components {
             block_private_targets: boolean;
             /** Format: int64 */
             retention_days: number | null;
+            smtp: components["schemas"]["SmtpBody"];
+            smtp_error?: string;
         };
         SetupInputBody: {
             /**
@@ -1335,6 +1610,33 @@ export interface components {
             readonly $schema?: string;
             needed: boolean;
         };
+        SmtpBody: {
+            from: string;
+            host: string;
+            password: string;
+            /** Format: int64 */
+            port: number;
+            tls: string;
+            username: string;
+        };
+        SmtpTestInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SmtpTestInputBody.json
+             */
+            readonly $schema?: string;
+            to: string;
+        };
+        SmtpTestOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SmtpTestOutputBody.json
+             */
+            readonly $schema?: string;
+            ok: boolean;
+        };
         StatusEventBody: {
             message: string;
             /**
@@ -1355,6 +1657,86 @@ export interface components {
              */
             readonly $schema?: string;
             events: components["schemas"]["StatusEventBody"][] | null;
+        };
+        StatusPageBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/StatusPageBody.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            created_at: string;
+            custom_domain: string | null;
+            description: string;
+            /** Format: int64 */
+            id: number;
+            items: components["schemas"]["StatusPageItemBody"][] | null;
+            logo_url: string;
+            published: boolean;
+            slug: string;
+            /** Format: int64 */
+            team_id: number;
+            /** @enum {string} */
+            theme: "auto" | "light" | "dark";
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Public address of the page. */
+            url: string;
+        };
+        StatusPageItemBody: {
+            display_name: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            monitor_id: number;
+            section: string;
+        };
+        StatusPageItemRequest: {
+            /** @description Public name; defaults to the monitor's name. */
+            display_name?: string;
+            /** Format: int64 */
+            monitor_id: number;
+            /** @description Heading the item is shown under; empty for none. */
+            section?: string;
+        };
+        StatusPageRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/StatusPageRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Host name the page is also served on, e.g. status.example.com. Only an instance admin can set, change or remove it; for anyone else leaving it out keeps the current value. */
+            custom_domain?: string | null;
+            description?: string;
+            items?: components["schemas"]["StatusPageItemRequest"][] | null;
+            /** @description Empty, or an https:// URL. */
+            logo_url?: string;
+            /** @description Only published pages are served publicly. */
+            published?: boolean;
+            /** @description URL path segment: lower-case letters, digits and hyphens. */
+            slug: string;
+            /** @enum {string} */
+            theme?: "auto" | "light" | "dark";
+            title: string;
+        };
+        SubscriberBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SubscriberBody.json
+             */
+            readonly $schema?: string;
+            confirmed: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "email" | "webhook";
+            target: string;
         };
         TeamBody: {
             /**
@@ -1420,6 +1802,8 @@ export interface components {
             block_private_targets: boolean;
             /** Format: int64 */
             retention_days?: number;
+            /** @description Instance SMTP settings; omit to keep, null to clear */
+            smtp?: Record<string, never> | null;
         };
         UptimeDayBody: {
             /** Format: int64 */
@@ -1470,6 +1854,16 @@ export interface components {
              * @description From daily rollups (lags by up to one rollup interval).
              */
             uptime_7d: number | null;
+        };
+        WebhookSubscriberRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/WebhookSubscriberRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description http:// or https:// URL, without credentials. */
+            url: string;
         };
     };
     responses: never;
@@ -1529,6 +1923,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-admin-settings-smtp-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmtpTestInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmtpTestOutputBody"];
                 };
             };
             /** @description Error */
@@ -3263,6 +3690,475 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ListNotificationLogOutputBody"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-status-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListStatusPagesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-status-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusPageRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-status-pages-by-page-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-api-teams-by-team-id-status-pages-by-page-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusPageRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-teams-by-team-id-status-pages-by-page-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-status-pages-by-page-id-incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListIncidentsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-status-pages-by-page-id-incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncidentRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+                incidentID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncidentEditRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+                incidentID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id-publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+                incidentID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-status-pages-by-page-id-incidents-by-incident-id-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+                incidentID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncidentUpdateRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-status-pages-by-page-id-subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSubscribersOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-teams-by-team-id-status-pages-by-page-id-subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookSubscriberRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriberBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-teams-by-team-id-status-pages-by-page-id-subscribers-by-subscriber-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                pageID: number;
+                subscriberID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

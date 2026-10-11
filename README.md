@@ -11,7 +11,10 @@ checking through a database outage, daily uptime rollup and retention pruning, a
 with a generated OpenAPI spec. Phase 2 (alerting) added notification channels, escalation
 policies, acknowledgements, monitor dependencies, flap damping and maintenance windows.
 Phase 3 (dashboard) adds a browser dashboard embedded in the server binary, with live updates
-over Server-Sent Events. Status pages come in a later phase.
+over Server-Sent Events. Phase 4 adds Docker container monitoring through a socket proxy.
+Phase 5 adds public status pages at `/status/<slug>` (optionally on a custom domain), incidents
+auto-drafted from outages, and email, webhook and RSS subscribers. Subscriber email needs the
+instance SMTP server (Administration → settings).
 
 ## Run with Docker Compose
 
@@ -73,7 +76,7 @@ create a team token (`POST /api/teams/{id}/tokens`, scope `read` or `write`) and
 |---|---|---|
 | `DATABASE_URL` | required | Postgres URL. Tables live in the `upsera` schema. |
 | `APP_SECRET` | required | ≥ 32 chars; back it up with the database. It encrypts notification channel secrets: changing it makes existing channels unusable until re-entered. |
-| `BASE_URL` | `http://localhost:PORT` | Public URL, used for push URLs and secure cookies. |
+| `BASE_URL` | `http://localhost:PORT` | Public URL, used for push URLs, secure cookies, and the links in status page subscriber emails and RSS feeds. |
 | `TELEGRAM_API_URL` | `https://api.telegram.org` | Telegram Bot API base URL (override for a local fake in tests). |
 | `SLACK_API_URL` | `https://slack.com/api` | Slack Web API base URL (override for a local fake in tests). |
 | `PORT` | `3080` | HTTP port. |
@@ -84,11 +87,22 @@ create a team token (`POST /api/teams/{id}/tokens`, scope `read` or `write`) and
 | `HEARTBEAT_RETENTION_DAYS` | `14` | Raw heartbeat retention (min 3). |
 | `ROLLUP_INTERVAL` | `1h` | Daily rollup / prune job interval (min 1m). |
 | `MAX_CONCURRENT_CHECKS` | `100` | Checks running at once (min 1). |
+| `INCIDENT_DRAFT_AFTER` | `5m` | How long a monitor on a published status page must stay down before an incident is drafted for review (min 1s). |
+| `TRUSTED_PROXIES` | empty | Comma separated addresses or CIDRs of reverse proxies (for example your Caddy). Only their `X-Forwarded-For` is believed, to tell visitors apart for the public sign-up rate limits; without it every visitor behind a proxy shares one limit. |
 | `DOCKER_HOST` | empty | Docker socket proxy; its address is always refused as a check target. |
 | `LOG_LEVEL` / `LOG_FORMAT` | `info` / `json` | Logging. |
 
 `upsera healthcheck` exits 0 when the local server answers `/healthz` (for container health checks).
 `upsera openapi` prints the OpenAPI document.
+
+### Status pages on a custom domain
+
+Only an instance admin can set a page's custom domain (it is claimed for the whole instance). Point
+the domain's DNS at the server and put a TLS-terminating proxy in front of it, forwarding the
+original `Host` header and listing the proxy in `TRUSTED_PROXIES`. With Caddy, `on_demand_tls { ask
+http://upsera:3080/api/tls-allowed }` makes it request certificates only for published pages'
+domains. Subscriber emails link to `https://<domain>/...` for such pages, which therefore needs TLS to
+work. The packaged Caddy profile comes in a later phase.
 
 ## Development
 

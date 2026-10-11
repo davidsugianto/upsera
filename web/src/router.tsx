@@ -17,6 +17,10 @@ import { PoliciesPage } from './pages/policies/PoliciesPage'
 import { PolicyFormPage } from './pages/policies/PolicyFormPage'
 import { MaintenancePage } from './pages/maintenance/MaintenancePage'
 import { MaintenanceFormPage } from './pages/maintenance/MaintenanceFormPage'
+import { StatusPagesPage } from './pages/status/StatusPagesPage'
+import { StatusPageFormPage } from './pages/status/StatusPageFormPage'
+import { IncidentsPage } from './pages/status/IncidentsPage'
+import { SubscribersPage } from './pages/status/SubscribersPage'
 import { MembersPage } from './pages/MembersPage'
 import { TokensPage } from './pages/TokensPage'
 
@@ -40,6 +44,11 @@ export const router = createBrowserRouter([
       { path: 'docker-hosts', element: <DockerHostsPage /> },
       { path: 'docker-hosts/new', element: <DockerHostFormPage /> },
       { path: 'docker-hosts/:hostId/edit', element: <DockerHostFormPage /> },
+      { path: 'status-pages', element: <StatusPagesPage /> },
+      { path: 'status-pages/new', element: <StatusPageFormPage /> },
+      { path: 'status-pages/:pageId/edit', element: <StatusPageFormPage /> },
+      { path: 'status-pages/:pageId/incidents', element: <IncidentsPage /> },
+      { path: 'status-pages/:pageId/subscribers', element: <SubscribersPage /> },
       { path: 'policies', element: <PoliciesPage /> },
       { path: 'policies/new', element: <PolicyFormPage /> },
       { path: 'policies/:policyId/edit', element: <PolicyFormPage /> },

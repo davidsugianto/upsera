@@ -65,6 +65,17 @@ type DockerRegistry interface {
 	Client(teamID, hostID int64) (*dockerapi.Client, error)
 }
 
+// PublicPages serves the public status pages (*statuspage.Service).
+type PublicPages interface {
+	// Handler serves /status/{slug}... (full paths, with the /status prefix).
+	Handler() http.Handler
+	// HostMiddleware serves a page when the request Host is its custom
+	// domain and passes everything else on.
+	HostMiddleware(next http.Handler) http.Handler
+	// TLSAllowed answers GET /api/tls-allowed?domain= for Caddy on-demand TLS.
+	TLSAllowed(w http.ResponseWriter, r *http.Request)
+}
+
 // MaintenanceRegistry is the subset of the maintenance window registry the
 // API needs to keep in sync with the store.
 type MaintenanceRegistry interface {
@@ -79,10 +90,14 @@ type Deps struct {
 	Alerting    Alerting
 	Maintenance MaintenanceRegistry
 	Docker      DockerRegistry
-	Policy      *netpolicy.Policy
-	Config      config.Config
-	Logger      *slog.Logger
-	Version     string
+	// StatusPages is told when status pages change (nil = no public pages).
+	StatusPages StatusPageCache
+	// Public serves the public status pages and custom domains (nil = none).
+	Public  PublicPages
+	Policy  *netpolicy.Policy
+	Config  config.Config
+	Logger  *slog.Logger
+	Version string
 	// Events receives monitor-list changes and feeds the dashboard's live
 	// stream (required).
 	Events *events.Hub
@@ -108,11 +123,21 @@ type emptyOutput struct{}
 
 // NewRouter builds the HTTP handler for the whole API, plus the
 // unauthenticated /healthz endpoint used by container health checks and,
+// when d.Public is set the public status pages (also on custom domains), and
 // when d.UI is set, the dashboard for every other path.
 func NewRouter(d Deps) http.Handler {
 	r, _ := newAPI(d)
+	if d.Public != nil {
+		pages := d.Public.Handler()
+		r.Get("/api/tls-allowed", d.Public.TLSAllowed)
+		r.Handle("/status", pages)
+		r.Handle("/status/*", pages)
+	}
 	if d.UI != nil {
 		r.NotFound(d.UI.ServeHTTP)
+	}
+	if d.Public != nil {
+		return d.Public.HostMiddleware(r)
 	}
 	return r
 }
@@ -129,6 +154,9 @@ func OpenAPISpec(version string) ([]byte, error) {
 func newAPI(d Deps) (*chi.Mux, huma.API) {
 	if d.Docker == nil {
 		d.Docker = dockerapi.NewRegistry()
+	}
+	if d.StatusPages == nil {
+		d.StatusPages = noopStatusPageCache{}
 	}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer, accessLogMiddleware(d.Logger))
@@ -215,6 +243,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	registerMonitorRoutes(api, d)
 	registerChannelRoutes(api, d)
 	registerDockerHostRoutes(api, d)
+	registerStatusPageRoutes(api, d)
 	registerPolicyRoutes(api, d)
 	registerAlertRoutes(api, d)
 	registerMaintenanceRoutes(api, d)

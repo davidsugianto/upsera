@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" data-theme="{{.Theme}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+{{if .Description}}<meta name="description" content="{{.Description}}">
+{{end}}<link rel="alternate" type="application/rss+xml" title="{{.Title}}" href="{{.FeedURL}}">
+<style>{{.CSS}}</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+{{if .LogoURL}}<img class="logo" src="{{.LogoURL}}" alt="" width="48" height="48">
+{{end}}<div>
+<h1>{{.Title}}</h1>
+{{if .Description}}<p>{{.Description}}</p>
+{{end}}</div>
+</header>
+<main>
+<div class="banner b-{{.Banner.Class}}" role="status"><span class="dot" aria-hidden="true"></span><span>{{.Banner.Label}}</span></div>
+{{if .Active}}<section aria-labelledby="active-h">
+<h2 id="active-h">Active incidents</h2>
+{{range .Active}}{{template "incident" .}}
+{{end}}</section>
+{{end}}{{range .Sections}}<section{{if not .Name}} aria-label="Services"{{else}} aria-labelledby="sec-{{.Index}}"{{end}}>
+{{if .Name}}<h2 id="sec-{{.Index}}">{{.Name}}</h2>
+{{end}}<ul class="items card">
+{{range .Items}}<li>
+<div class="item-head"><span class="name">{{.Name}}</span><span class="state s-{{.StateClass}}">{{.StateLabel}}</span></div>
+<div class="bar" aria-hidden="true">{{range .Cells}}<span class="cell {{.Class}}" title="{{.Title}}"></span>{{end}}</div>
+<p class="sr-only">{{.Summary}}</p>
+<div class="bar-foot" aria-hidden="true"><span>90 days ago</span><span>{{.Uptime}} uptime</span><span>Today</span></div>
+</li>
+{{end}}</ul>
+</section>
+{{end}}<section aria-labelledby="past-h">
+<h2 id="past-h">Past incidents</h2>
+{{range .Past}}{{template "incident" .}}
+{{else}}<p class="empty">No incidents in the last 14 days.</p>
+{{end}}</section>
+</main>
+<footer>
+<h2>Subscribe to updates</h2>
+<form class="subscribe" method="post" action="{{.Base}}/subscribe">
+<label class="sr-only" for="email">Email address</label>
+<input id="email" type="email" name="email" required autocomplete="email" placeholder="you@example.com">
+<div class="hp" aria-hidden="true"><label>Leave this field empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+<button type="submit">Subscribe</button>
+</form>
+<p class="foot-links"><a href="{{.FeedURL}}">RSS feed</a><span>Powered by Upsera</span></p>
+</footer>
+</div>
+</body>
+</html>
