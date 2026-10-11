@@ -127,8 +127,13 @@ type Monitor struct {
 	// ChannelIDs are the channels alerted when no escalation policy is
 	// set (empty = the team's default channels). Always sorted.
 	ChannelIDs []int64
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Regions are the probe regions the monitor is checked from (empty =
+	// {LocalRegion}); Quorum is how many must fail for DOWN (0 = 1). Use
+	// EffectiveRegions / EffectiveQuorum.
+	Regions   []string
+	Quorum    int
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Monitor field limits, enforced by the API and by table CHECK constraints.
@@ -190,6 +195,9 @@ type MonitorState struct {
 	TLSExpiresAt        *time.Time
 	// FlapCount is the number of DOWN/UP state changes in the last hour.
 	FlapCount int
+	// Regions is the live per-region state of a monitor checked from remote
+	// regions (nil for local-only monitors).
+	Regions map[string]RegionState
 }
 
 // Role is a user's role within one team.

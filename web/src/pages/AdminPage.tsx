@@ -11,6 +11,7 @@ import {
 import type { Settings, SettingsUpdate } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Layout } from '../components/Layout'
+import { ProbesSection } from './admin/ProbesSection'
 import { TextField, NumberField, Checkbox, Select } from '../components/Fields'
 import { ErrorMessage, Loading, PageHeader, errorText, fieldError, formatTime } from '../components/ui'
 import {
@@ -42,6 +43,7 @@ export function AdminPage() {
       <PageHeader title="Admin" />
       <div className="space-y-8">
         <UsersSection />
+        <ProbesSection />
         <SettingsSection />
       </div>
     </Layout>

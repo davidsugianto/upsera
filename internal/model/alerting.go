@@ -82,10 +82,14 @@ const (
 	EventFlapping   AlertEvent = "flapping"
 	EventCertExpiry AlertEvent = "cert_expiry"
 	EventTest       AlertEvent = "test"
+	// EventProbeSilent / EventProbeRecovered are about a probe (region), not
+	// one monitor; they carry no alert and are not acknowledgeable.
+	EventProbeSilent    AlertEvent = "probe_silent"
+	EventProbeRecovered AlertEvent = "probe_recovered"
 )
 
 // AlertEvents lists every notification kind.
-var AlertEvents = []AlertEvent{EventDown, EventRecovered, EventFlapping, EventCertExpiry, EventTest}
+var AlertEvents = []AlertEvent{EventDown, EventRecovered, EventFlapping, EventCertExpiry, EventTest, EventProbeSilent, EventProbeRecovered}
 
 // Valid reports whether e is a known event kind.
 func (e AlertEvent) Valid() bool { return slices.Contains(AlertEvents, e) }

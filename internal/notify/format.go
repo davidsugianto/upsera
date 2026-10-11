@@ -18,6 +18,10 @@ func Title(ev Event) string {
 		return "[FLAPPING] " + ev.MonitorName
 	case model.EventCertExpiry:
 		return "[CERT] " + ev.MonitorName
+	case model.EventProbeSilent:
+		return "[PROBE SILENT] " + ev.Region
+	case model.EventProbeRecovered:
+		return "[PROBE UP] " + ev.Region
 	case model.EventTest:
 		return "[TEST] Upsera"
 	}
@@ -35,6 +39,11 @@ func Body(ev Event) string {
 		return fmt.Sprintf("State changed %d times in the last hour; alerts are held back until it settles.", ev.FlapCount)
 	case model.EventCertExpiry:
 		return fmt.Sprintf("TLS certificate expires in %d day(s) (%s).", ev.CertDaysLeft, ev.CertExpiresAt.UTC().Format("2006-01-02"))
+	case model.EventProbeSilent:
+		return fmt.Sprintf("No contact from probe region %q since %s.\nMonitors checked from this region show a probe-silent warning, not DOWN; the other regions keep checking.",
+			ev.Region, ev.At.UTC().Format(time.RFC1123))
+	case model.EventProbeRecovered:
+		return fmt.Sprintf("Probe region %q is reporting again (%s).", ev.Region, ev.At.UTC().Format(time.RFC1123))
 	case model.EventTest:
 		return `Test notification from Upsera channel "` + ev.ChannelName + `".`
 	}

@@ -23,7 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 	if c.Port != 3080 || c.DBMaxConns != 10 || c.HeartbeatBufferSize != 100000 || c.RetentionDays != 14 ||
 		c.TimeZone != "UTC" || c.FlushInterval != time.Second || c.BaseURL != "http://localhost:3080" ||
 		c.TelegramAPIURL != "https://api.telegram.org" || c.SlackAPIURL != "https://slack.com/api" ||
-		c.IncidentDraftAfter != 5*time.Minute {
+		c.IncidentDraftAfter != 5*time.Minute || c.ProbeSilentAfter != 2*time.Minute {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 	if c.SecureCookies() {
@@ -36,19 +36,21 @@ func TestLoadRejects(t *testing.T) {
 		set  map[string]string
 		want string
 	}{
-		"missing database":     {map[string]string{"DATABASE_URL": ""}, "DATABASE_URL is required"},
-		"short secret":         {map[string]string{"APP_SECRET": "short"}, "APP_SECRET"},
-		"retention below 3":    {map[string]string{"HEARTBEAT_RETENTION_DAYS": "2"}, "HEARTBEAT_RETENTION_DAYS"},
-		"pool too small":       {map[string]string{"DB_MAX_CONNS": "1"}, "DB_MAX_CONNS"},
-		"bad time zone":        {map[string]string{"TZ": "Mars/Olympus"}, "TZ must be"},
-		"relative base url":    {map[string]string{"BASE_URL": "status.example.com"}, "BASE_URL"},
-		"port out of range":    {map[string]string{"PORT": "70000"}, "PORT"},
-		"bad flush interval":   {map[string]string{"HEARTBEAT_FLUSH_INTERVAL": "1ms"}, "HEARTBEAT_FLUSH_INTERVAL"},
-		"bad telegram api url": {map[string]string{"TELEGRAM_API_URL": "telegram.example.com"}, "TELEGRAM_API_URL"},
-		"bad slack api url":    {map[string]string{"SLACK_API_URL": "slack.example.com"}, "SLACK_API_URL"},
-		"bad draft delay":      {map[string]string{"INCIDENT_DRAFT_AFTER": "1ms"}, "INCIDENT_DRAFT_AFTER"},
-		"bad trusted proxy":    {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/8, nope"}, "TRUSTED_PROXIES"},
-		"bad proxy prefix len": {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/33"}, "TRUSTED_PROXIES"},
+		"missing database":       {map[string]string{"DATABASE_URL": ""}, "DATABASE_URL is required"},
+		"short secret":           {map[string]string{"APP_SECRET": "short"}, "APP_SECRET"},
+		"retention below 3":      {map[string]string{"HEARTBEAT_RETENTION_DAYS": "2"}, "HEARTBEAT_RETENTION_DAYS"},
+		"pool too small":         {map[string]string{"DB_MAX_CONNS": "1"}, "DB_MAX_CONNS"},
+		"bad time zone":          {map[string]string{"TZ": "Mars/Olympus"}, "TZ must be"},
+		"relative base url":      {map[string]string{"BASE_URL": "status.example.com"}, "BASE_URL"},
+		"port out of range":      {map[string]string{"PORT": "70000"}, "PORT"},
+		"bad flush interval":     {map[string]string{"HEARTBEAT_FLUSH_INTERVAL": "1ms"}, "HEARTBEAT_FLUSH_INTERVAL"},
+		"bad telegram api url":   {map[string]string{"TELEGRAM_API_URL": "telegram.example.com"}, "TELEGRAM_API_URL"},
+		"bad slack api url":      {map[string]string{"SLACK_API_URL": "slack.example.com"}, "SLACK_API_URL"},
+		"bad draft delay":        {map[string]string{"INCIDENT_DRAFT_AFTER": "1ms"}, "INCIDENT_DRAFT_AFTER"},
+		"probe silent below 30s": {map[string]string{"PROBE_SILENT_AFTER": "29s"}, "PROBE_SILENT_AFTER"},
+		"probe silent garbage":   {map[string]string{"PROBE_SILENT_AFTER": "soon"}, "PROBE_SILENT_AFTER"},
+		"bad trusted proxy":      {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/8, nope"}, "TRUSTED_PROXIES"},
+		"bad proxy prefix len":   {map[string]string{"TRUSTED_PROXIES": "10.0.0.0/33"}, "TRUSTED_PROXIES"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -108,5 +110,19 @@ func TestTrustedProxies(t *testing.T) {
 		if p.String() != want[i] {
 			t.Errorf("proxy %d = %v, want %v", i, p, want[i])
 		}
+	}
+}
+
+func TestProbeSilentAfter(t *testing.T) {
+	m := valid()
+	m["PROBE_SILENT_AFTER"] = "30s"
+	c, err := load(env(m))
+	if err != nil || c.ProbeSilentAfter != 30*time.Second {
+		t.Fatalf("30s: got %v, %v", c.ProbeSilentAfter, err)
+	}
+	m["PROBE_SILENT_AFTER"] = "5m"
+	c, err = load(env(m))
+	if err != nil || c.ProbeSilentAfter != 5*time.Minute {
+		t.Fatalf("5m: got %v, %v", c.ProbeSilentAfter, err)
 	}
 }

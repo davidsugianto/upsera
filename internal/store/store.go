@@ -33,6 +33,9 @@ var (
 	// ErrInUse is returned when deleting a row another row still depends
 	// on (a channel used by a policy, a policy used by a monitor).
 	ErrInUse = errors.New("in use")
+	// ErrLocalProbe is returned when an operation is not allowed on the
+	// built-in "local" probe (issuing a token for it, deleting it).
+	ErrLocalProbe = errors.New("store: the local probe is built in")
 )
 
 //go:embed migrations/*.sql
@@ -71,6 +74,17 @@ func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 // Migrate creates the schema if needed and applies pending migrations. A
 // Postgres advisory lock keeps concurrent starts from racing.
 func (s *Store) Migrate(ctx context.Context, log *slog.Logger) error {
+	return s.migrate(ctx, log, 0)
+}
+
+// MigrateTo applies pending migrations up to and including version. It
+// exists so tests can exercise an upgrade from an older schema.
+func (s *Store) MigrateTo(ctx context.Context, log *slog.Logger, version int64) error {
+	return s.migrate(ctx, log, version)
+}
+
+// migrate applies pending migrations, up to version when it is > 0.
+func (s *Store) migrate(ctx context.Context, log *slog.Logger, version int64) error {
 	if _, err := s.pool.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS "+Schema); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
@@ -92,7 +106,12 @@ func (s *Store) Migrate(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
-	results, err := p.Up(ctx)
+	var results []*goose.MigrationResult
+	if version > 0 {
+		results, err = p.UpTo(ctx, version)
+	} else {
+		results, err = p.Up(ctx)
+	}
 	if err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}

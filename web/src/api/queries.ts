@@ -6,6 +6,7 @@ import type {
   AlertFilter,
   Channel,
   ChannelRequest,
+  CreatedProbe,
   CreatedToken,
   DockerContainer,
   DockerHost,
@@ -24,6 +25,9 @@ import type {
   MonitorRequest,
   OverviewItem,
   PolicyRequest,
+  Probe,
+  ProbeRegistration,
+  Region,
   Role,
   Settings,
   SettingsUpdate,
@@ -62,6 +66,8 @@ export const keys = {
   subscribers: (t: number, pageId: number) => ['subscribers', t, pageId] as const,
   adminUsers: ['adminUsers'] as const,
   adminSettings: ['adminSettings'] as const,
+  adminProbes: ['adminProbes'] as const,
+  regions: ['regions'] as const,
 }
 
 // ---- session ----
@@ -717,5 +723,53 @@ export function useDeleteSubscriber(t: number, pageId: number) {
         }),
       ),
     () => [keys.subscribers(t, pageId)],
+  )
+}
+
+// ---- probes and regions ----
+
+/** useRegions lists the regions a monitor can run in (the built-in "local" plus every probe region). */
+export function useRegions() {
+  return useQuery({
+    queryKey: keys.regions,
+    queryFn: async (): Promise<Region[]> =>
+      (await unwrap(client.GET('/api/regions'))).regions ?? [],
+    staleTime: 30_000,
+  })
+}
+
+export function useAdminProbes(enabled = true) {
+  return useQuery({
+    queryKey: keys.adminProbes,
+    queryFn: async (): Promise<Probe[]> =>
+      (await unwrap(client.GET('/api/admin/probes'))).probes ?? [],
+    enabled,
+    // The online badge and last-seen time change without any user action.
+    refetchInterval: 15_000,
+  })
+}
+
+export function useCreateProbe() {
+  return useInvalidatingMutation(
+    async (body: { name: string; region: string }): Promise<CreatedProbe> =>
+      unwrap(client.POST('/api/admin/probes', { body })),
+    () => [keys.adminProbes, keys.regions],
+  )
+}
+
+/** useProbeRegistrationToken issues a new one-time token; this revokes the probe's current credential. */
+export function useProbeRegistrationToken() {
+  return useInvalidatingMutation(
+    async (id: number): Promise<ProbeRegistration> =>
+      unwrap(client.POST('/api/admin/probes/{id}/registration-token', { params: { path: { id } } })),
+    () => [keys.adminProbes],
+  )
+}
+
+export function useDeleteProbe() {
+  return useInvalidatingMutation(
+    (id: number): Promise<void> =>
+      unwrap(client.DELETE('/api/admin/probes/{id}', { params: { path: { id } } })),
+    () => [keys.adminProbes, keys.regions],
   )
 }

@@ -38,6 +38,10 @@ type Config struct {
 	// page must have an open alert before an incident is auto-drafted
 	// (INCIDENT_DRAFT_AFTER, default 5m).
 	IncidentDraftAfter time.Duration
+	// ProbeSilentAfter is how long a registered remote probe may go without
+	// contact before it is reported silent (PROBE_SILENT_AFTER, default 2m,
+	// minimum 30s).
+	ProbeSilentAfter time.Duration
 	// TrustedProxies are the reverse proxies (CIDRs or single addresses,
 	// TRUSTED_PROXIES, comma separated) whose X-Forwarded-For header is
 	// believed when working out a visitor's address for public rate limits.
@@ -92,6 +96,7 @@ func load(getenv func(string) string) (Config, error) {
 	c.FlushInterval = durVar("HEARTBEAT_FLUSH_INTERVAL", time.Second, 100*time.Millisecond)
 	c.RollupEvery = durVar("ROLLUP_INTERVAL", time.Hour, time.Minute)
 	c.IncidentDraftAfter = durVar("INCIDENT_DRAFT_AFTER", 5*time.Minute, time.Second)
+	c.ProbeSilentAfter = durVar("PROBE_SILENT_AFTER", 2*time.Minute, 30*time.Second)
 	for _, raw := range strings.Split(getenv("TRUSTED_PROXIES"), ",") {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {

@@ -2,6 +2,7 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BIN     ?= bin/upsera
+PROBE_BIN ?= bin/upsera-probe
 COMPOSE := docker compose -f deploy/docker-compose.yml --profile local-db
 
 # colima: point Docker and testcontainers at its socket when it exists and
@@ -15,8 +16,8 @@ endif
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help build web server dev test test-short test-web lint fmt vet gen-api check \
-	env docker-build up down logs ps restart clean
+.PHONY: help build web server probe dev test test-short test-web lint fmt vet gen-api check \
+	env docker-build docker-build-probe up down logs ps restart clean
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -32,6 +33,9 @@ web: web/node_modules ## build the dashboard into web/dist/app
 
 server: ## build the server binary (embeds whatever web/dist/app holds)
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./cmd/upsera
+
+probe: ## build the remote probe binary into bin/upsera-probe
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(PROBE_BIN) ./cmd/upsera-probe
 
 build: web server ## build dashboard + server into bin/upsera
 
@@ -77,6 +81,9 @@ env: ## create deploy/.env with random secrets (local-db) if missing
 
 docker-build: ## build the upsera image
 	$(DOCKER_ENV) UPSERA_VERSION=$(VERSION) $(COMPOSE) build upsera
+
+docker-build-probe: ## build the upsera-probe image (upsera-probe:dev)
+	$(DOCKER_ENV) docker build --target probe --build-arg VERSION=$(VERSION) -t upsera-probe:dev .
 
 up: env ## start upsera + Postgres + socket proxy on http://localhost:3080
 	$(DOCKER_ENV) UPSERA_VERSION=$(VERSION) $(COMPOSE) up -d --build

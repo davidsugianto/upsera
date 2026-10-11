@@ -4,6 +4,58 @@
  */
 
 export interface paths {
+    "/api/admin/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API admin probes */
+        get: operations["get-api-admin-probes"];
+        put?: never;
+        /** Post API admin probes */
+        post: operations["post-api-admin-probes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/probes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete API admin probes by ID */
+        delete: operations["delete-api-admin-probes-by-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/probes/{id}/registration-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post API admin probes by ID registration token */
+        post: operations["post-api-admin-probes-by-id-registration-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/settings": {
         parameters: {
             query?: never;
@@ -120,6 +172,23 @@ export interface paths {
         put?: never;
         /** Post API push by token */
         post: operations["post-api-push-by-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API regions */
+        get: operations["get-api-regions"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -923,6 +992,30 @@ export interface components {
             name: string;
             password: string;
         };
+        CreateProbeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/CreateProbeInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Lowercase letters, digits and dashes. */
+            name: string;
+            /** @description Region label monitors select; one probe per region. "local" is reserved. */
+            region: string;
+        };
+        CreateProbeOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/CreateProbeOutputBody.json
+             */
+            readonly $schema?: string;
+            probe: components["schemas"]["ProbeBody"];
+            /** Format: date-time */
+            registration_expires_at: string;
+            registration_token: string;
+        };
         CreateTeamInputBody: {
             /**
              * Format: uri
@@ -1065,6 +1158,8 @@ export interface components {
             message: string;
             /** Format: int64 */
             probe_id: number;
+            /** @description Region of the probe that ran the check; empty when the probe is unknown. */
+            region: string;
             /** @enum {string} */
             status: "down" | "up" | "pending" | "maintenance";
             /** Format: date-time */
@@ -1274,6 +1369,24 @@ export interface components {
             readonly $schema?: string;
             escalation_policies: components["schemas"]["PolicyBody"][] | null;
         };
+        ListProbesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListProbesOutputBody.json
+             */
+            readonly $schema?: string;
+            probes: components["schemas"]["ProbeBody"][] | null;
+        };
+        ListRegionsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListRegionsOutputBody.json
+             */
+            readonly $schema?: string;
+            regions: components["schemas"]["RegionBody"][] | null;
+        };
         ListStatusPagesOutputBody: {
             /**
              * Format: uri
@@ -1426,6 +1539,12 @@ export interface components {
             paused: boolean;
             push_url?: string;
             /** Format: int64 */
+            quorum: number;
+            region_states: {
+                [key: string]: components["schemas"]["RegionStateBody"];
+            };
+            regions: string[] | null;
+            /** Format: int64 */
             retries: number;
             /** Format: int64 */
             retry_interval_s: number;
@@ -1488,6 +1607,13 @@ export interface components {
             paused?: boolean;
             /**
              * Format: int64
+             * @description How many regions must see the monitor down for it to be down; default is a majority of the regions (on update with regions left out, the current quorum is kept).
+             */
+            quorum?: number;
+            /** @description Probe regions to check from. On create the default is ["local"]; on update, leaving it out keeps the monitor's current regions and quorum. Remote regions are only allowed for http, keyword, tcp, ping and dns monitors. */
+            regions?: string[] | null;
+            /**
+             * Format: int64
              * @default 1
              */
             retries: number;
@@ -1530,7 +1656,7 @@ export interface components {
             dedupe_key: string;
             error: string;
             /** @enum {string} */
-            event: "down" | "recovered" | "flapping" | "cert_expiry" | "test";
+            event: "down" | "recovered" | "flapping" | "cert_expiry" | "test" | "probe_silent" | "probe_recovered";
             /** Format: int64 */
             id: number;
             /** Format: int64 */
@@ -1567,6 +1693,39 @@ export interface components {
             name: string;
             steps: components["schemas"]["EscalationStepBody"][] | null;
         };
+        ProbeBody: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            id: number;
+            /** @description The built-in checker; it cannot be deleted or re-registered. */
+            is_local: boolean;
+            /** Format: date-time */
+            last_seen_at?: string;
+            name: string;
+            online: boolean;
+            region: string;
+            /** @description True once the registration token was exchanged for a credential. */
+            registered: boolean;
+            /**
+             * Format: date-time
+             * @description When the pending registration token expires; absent once redeemed.
+             */
+            registration_expires_at?: string;
+            version: string;
+        };
+        ProbeTokenBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ProbeTokenBody.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            registration_expires_at: string;
+            /** @description One-time token (upr_...) the probe exchanges for its credential. Shown once. */
+            registration_token: string;
+        };
         PushOutputBody: {
             /**
              * Format: uri
@@ -1575,6 +1734,21 @@ export interface components {
              */
             readonly $schema?: string;
             ok: boolean;
+        };
+        RegionBody: {
+            name: string;
+            online: boolean;
+        };
+        RegionStateBody: {
+            /** Format: int64 */
+            consecutive_failures: number;
+            /** Format: date-time */
+            last_result_at: string;
+            /** Format: int32 */
+            latency_ms: number;
+            message: string;
+            /** @enum {string} */
+            status: "down" | "up" | "pending" | "maintenance";
         };
         SettingsBody: {
             /**
@@ -1874,6 +2048,130 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "get-api-admin-probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListProbesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-admin-probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProbeInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateProbeOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-admin-probes-by-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-api-admin-probes-by-id-registration-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeTokenBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-api-admin-settings": {
         parameters: {
             query?: never;
@@ -2181,6 +2479,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PushOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListRegionsOutputBody"];
                 };
             };
             /** @description Error */

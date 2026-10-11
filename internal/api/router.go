@@ -83,6 +83,26 @@ type MaintenanceRegistry interface {
 	Remove(int64)
 }
 
+// ProbeRegistry is the in-memory set of registered probes (*probes.Registry):
+// it authenticates probe credentials without touching the database and tells
+// which regions are currently reporting.
+type ProbeRegistry interface {
+	Authenticate(credential string) (model.ProbeAuth, bool)
+	Seen(id int64, version string)
+	Online(region string) bool
+	Add(model.ProbeAuth)
+	Remove(id int64)
+}
+
+// ProbeSink is where remote probe results go and where assignments come from
+// (*scheduler.Scheduler).
+type ProbeSink interface {
+	Report(probeID int64, region string, rs []model.RegionResult)
+	Assignments(region string) (version string, ms []model.Monitor)
+	// Assigned reports whether monitor id is among Assignments(region).
+	Assigned(region string, id int64) bool
+}
+
 // Deps are the router's dependencies.
 type Deps struct {
 	Store       *store.Store
@@ -104,6 +124,13 @@ type Deps struct {
 	// UI serves the dashboard for every path the API does not route (nil =
 	// no dashboard).
 	UI http.Handler
+	// Probes and ProbeSink serve the remote probe protocol; both must be set
+	// for /api/probe/* to be registered.
+	Probes    ProbeRegistry
+	ProbeSink ProbeSink
+
+	// probeRegions resolves heartbeat probe ids to region names (set by newAPI).
+	probeRegions *probeRegionCache
 }
 
 const (
@@ -158,6 +185,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	if d.StatusPages == nil {
 		d.StatusPages = noopStatusPageCache{}
 	}
+	d.probeRegions = newProbeRegionCache(d.Store)
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer, accessLogMiddleware(d.Logger))
 	r.Get("/healthz", healthzHandler(d))
@@ -233,6 +261,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 
 	registerAuthRoutes(api, d, limiter)
 	registerAdminRoutes(api, d)
+	registerProbeAdminRoutes(api, d)
 	registerTeamRoutes(api, d)
 	registerMonitorRoutes(api, d)
 	registerChannelRoutes(api, d)
@@ -245,6 +274,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	registerPushRoutes(api, d)
 	registerDashboardRoutes(api, d)
 	registerEventRoutes(api, d)
+	registerProbeProtocol(r, d)
 
 	return r, api
 }
@@ -439,9 +469,15 @@ func writeAudit(ctx context.Context, d Deps, teamID *int64, act actor, action, t
 
 // lookupBearer resolves an "Authorization: Bearer ups_..." header to an API
 // token (recording its use). It returns nil, nil for a malformed, unknown,
-// expired or revoked token; the error is only for store failures.
+// expired or revoked token; the error is only for store failures. Probe
+// credentials ("upp_...") and registration tokens ("upr_...") never
+// authenticate here.
 func lookupBearer(ctx context.Context, d Deps, auth string) (*model.APIToken, error) {
-	secret := strings.TrimPrefix(strings.TrimPrefix(auth, bearerPrefix), tokenPrefix)
+	secret := strings.TrimPrefix(auth, bearerPrefix)
+	if strings.HasPrefix(secret, model.CredentialPrefix) || strings.HasPrefix(secret, model.RegistrationPrefix) {
+		return nil, nil
+	}
+	secret = strings.TrimPrefix(secret, tokenPrefix)
 	raw, err := base64.RawURLEncoding.DecodeString(secret)
 	if err != nil {
 		return nil, nil

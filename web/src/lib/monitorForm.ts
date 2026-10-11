@@ -18,6 +18,10 @@ export type MonitorForm = {
   /** '' = none */
   policyId: string
   channelIds: number[]
+  /** Regions the monitor runs in; always at least one ("local" is the built-in checker). */
+  regions: string[]
+  /** How many regions must report down; NaN while the field is being edited. */
+  quorum: number
   http: {
     url: string
     method: string
@@ -46,6 +50,29 @@ export const monitorTypes: { value: MonitorType; label: string }[] = [
   { value: 'push', label: 'Push (heartbeat)' },
 ]
 
+/** canRunRemotely reports whether a monitor type can run on remote probes (push and docker are local only). */
+export function canRunRemotely(type: MonitorType): boolean {
+  return type === 'http' || type === 'keyword' || type === 'tcp' || type === 'ping' || type === 'dns'
+}
+
+/** defaultQuorum is the majority of n regions. */
+export function defaultQuorum(n: number): number {
+  return Math.floor(n / 2) + 1
+}
+
+/** clampQuorum keeps q within 1..n; a blank (NaN) quorum falls back to the majority. */
+export function clampQuorum(q: number, n: number): number {
+  if (Number.isNaN(q)) return defaultQuorum(n)
+  return Math.min(Math.max(Math.trunc(q), 1), Math.max(n, 1))
+}
+
+/** setRegions selects regions; the quorum follows the majority while it was the default, else it is clamped. */
+export function setRegions(f: MonitorForm, regions: string[]): MonitorForm {
+  const wasDefault = f.quorum === defaultQuorum(f.regions.length)
+  const quorum = wasDefault ? defaultQuorum(regions.length) : clampQuorum(f.quorum, regions.length)
+  return { ...f, regions, quorum }
+}
+
 export const httpMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 export const methodsWithBody = ['POST', 'PUT', 'PATCH']
 export const dnsRecordTypes = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS']
@@ -64,6 +91,8 @@ export function defaultMonitorForm(type: MonitorType): MonitorForm {
     parentId: '',
     policyId: '',
     channelIds: [],
+    regions: ['local'],
+    quorum: 1,
     http: {
       url: '',
       method: 'GET',
@@ -100,6 +129,8 @@ export function monitorToForm(m: Monitor): MonitorForm {
   f.parentId = m.parent_id === null ? '' : String(m.parent_id)
   f.policyId = m.escalation_policy_id === null ? '' : String(m.escalation_policy_id)
   f.channelIds = m.channel_ids ?? []
+  f.regions = m.regions && m.regions.length > 0 ? m.regions : ['local']
+  f.quorum = m.quorum && m.quorum > 0 ? m.quorum : defaultQuorum(f.regions.length)
   switch (m.type) {
     case 'http':
     case 'keyword': {
@@ -198,6 +229,9 @@ export function formToBody(f: MonitorForm): MonitorRequest {
     paused: f.paused,
     channel_ids: f.channelIds,
     config: configFor(f),
+    ...(canRunRemotely(f.type)
+      ? { regions: f.regions, quorum: f.quorum }
+      : { regions: ['local'], quorum: 1 }),
   }
   if (f.parentId !== '') body.parent_id = Number(f.parentId)
   if (f.policyId !== '') body.escalation_policy_id = Number(f.policyId)
@@ -212,6 +246,11 @@ export function validateMonitorForm(f: MonitorForm): Record<string, string> {
   if (!(f.retry_interval_s >= 20)) e.retry_interval_s = 'Retry interval must be at least 20 seconds'
   if (!(f.timeout_s >= 1) || f.timeout_s >= f.interval_s) e.timeout_s = 'Timeout must be less than the interval'
   if (!(f.retries >= 0 && f.retries <= 10)) e.retries = 'Retries must be between 0 and 10'
+  if (canRunRemotely(f.type)) {
+    if (f.regions.length === 0) e.regions = 'Choose at least one region'
+    else if (!(Number.isInteger(f.quorum) && f.quorum >= 1 && f.quorum <= f.regions.length))
+      e.quorum = `Quorum must be between 1 and ${f.regions.length}`
+  }
   if (f.type === 'docker') {
     if (f.docker.hostId === '') e['config.docker_host_id'] = 'Choose a Docker host'
     if (f.docker.container.trim() === '') e['config.container'] = 'Container is required'

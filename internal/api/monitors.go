@@ -39,6 +39,8 @@ type monitorRequestBody struct {
 	ParentID           *int64            `json:"parent_id,omitempty"`
 	EscalationPolicyID *int64            `json:"escalation_policy_id,omitempty"`
 	ChannelIDs         []int64           `json:"channel_ids,omitempty" maxItems:"20"`
+	Regions            []string          `json:"regions,omitempty" maxItems:"10" minLength:"1" maxLength:"40" doc:"Probe regions to check from. On create the default is [\"local\"]; on update, leaving it out keeps the monitor's current regions and quorum. Remote regions are only allowed for http, keyword, tcp, ping and dns monitors."`
+	Quorum             *int              `json:"quorum,omitempty" minimum:"1" maximum:"10" doc:"How many regions must see the monitor down for it to be down; default is a majority of the regions (on update with regions left out, the current quorum is kept)."`
 }
 
 type createMonitorInput struct {
@@ -61,6 +63,15 @@ type monitorStateBody struct {
 	FlapCount           int          `json:"flap_count"`
 }
 
+// regionStateBody is one region's live state of a multi-region monitor.
+type regionStateBody struct {
+	Status              model.Status `json:"status"`
+	ConsecutiveFailures int          `json:"consecutive_failures"`
+	LastResultAt        time.Time    `json:"last_result_at"`
+	LatencyMs           int32        `json:"latency_ms"`
+	Message             string       `json:"message"`
+}
+
 type monitorBody struct {
 	ID                 int64             `json:"id"`
 	TeamID             int64             `json:"team_id"`
@@ -77,10 +88,15 @@ type monitorBody struct {
 	ParentID           *int64            `json:"parent_id"`
 	EscalationPolicyID *int64            `json:"escalation_policy_id"`
 	ChannelIDs         []int64           `json:"channel_ids"`
+	Regions            []string          `json:"regions"`
+	Quorum             int               `json:"quorum"`
 	PushURL            string            `json:"push_url,omitempty"`
 	CreatedAt          time.Time         `json:"created_at"`
 	UpdatedAt          time.Time         `json:"updated_at"`
 	State              *monitorStateBody `json:"state"`
+	// RegionStates is the per-region state, keyed by region (empty for
+	// local-only monitors).
+	RegionStates map[string]regionStateBody `json:"region_states"`
 }
 
 func toMonitorBody(d Deps, m model.Monitor) monitorBody {
@@ -93,7 +109,9 @@ func toMonitorBody(d Deps, m model.Monitor) monitorBody {
 		IntervalS: m.IntervalS, RetryIntervalS: m.RetryIntervalS, Retries: m.Retries,
 		TimeoutS: m.TimeoutS, Paused: m.Paused, GroupName: m.GroupName, Tags: m.Tags,
 		ParentID: m.ParentID, EscalationPolicyID: m.EscalationPolicyID, ChannelIDs: channelIDs,
+		Regions: m.EffectiveRegions(), Quorum: m.EffectiveQuorum(),
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		RegionStates: map[string]regionStateBody{},
 	}
 	if m.Type == model.TypePush {
 		b.PushURL = d.Config.BaseURL + "/api/push/" + m.PushToken
@@ -103,6 +121,12 @@ func toMonitorBody(d Deps, m model.Monitor) monitorBody {
 			Status: st.Status, Since: st.Since, LastCheckAt: st.LastCheckAt,
 			ConsecutiveFailures: st.ConsecutiveFailures, TLSExpiresAt: st.TLSExpiresAt,
 			FlapCount: st.FlapCount,
+		}
+		for region, rs := range st.Regions {
+			b.RegionStates[region] = regionStateBody{
+				Status: rs.Status, ConsecutiveFailures: rs.ConsecutiveFailures,
+				LastResultAt: rs.LastResultAt, LatencyMs: rs.LatencyMs, Message: rs.Message,
+			}
 		}
 	}
 	return b
@@ -127,6 +151,7 @@ type listHeartbeatsInput struct {
 
 type heartbeatBody struct {
 	ProbeID   int64        `json:"probe_id"`
+	Region    string       `json:"region" doc:"Region of the probe that ran the check; empty when the probe is unknown."`
 	Time      time.Time    `json:"time"`
 	Status    model.Status `json:"status"`
 	LatencyMs int32        `json:"latency_ms"`
@@ -198,6 +223,58 @@ func validateMonitorBody(in monitorRequestBody) (name string, cfg json.RawMessag
 		retries = *in.Retries
 	}
 	return name, cfg, retries, nil
+}
+
+// validateRegions normalizes a monitor's regions and quorum. Empty regions
+// mean the built-in checker only; a quorum left out defaults to a majority.
+// Remote regions must be probe regions and the type must be remote capable.
+func validateRegions(ctx context.Context, d Deps, t model.MonitorType, regions []string, quorum *int) ([]string, int, error) {
+	if len(regions) == 0 {
+		regions = []string{model.LocalRegion}
+	}
+	if len(regions) > model.MaxRegions {
+		return nil, 0, huma.Error422UnprocessableEntity(fmt.Sprintf("regions: at most %d regions", model.MaxRegions))
+	}
+	seen := make(map[string]struct{}, len(regions))
+	remote := false
+	for _, r := range regions {
+		if len(r) > 40 || !probeNameRe.MatchString(r) {
+			return nil, 0, huma.Error422UnprocessableEntity("regions: invalid region name")
+		}
+		if _, dup := seen[r]; dup {
+			return nil, 0, huma.Error422UnprocessableEntity(fmt.Sprintf("regions: duplicate region %q", r))
+		}
+		seen[r] = struct{}{}
+		if r != model.LocalRegion {
+			remote = true
+		}
+	}
+	if remote {
+		if !t.RemoteCapable() {
+			return nil, 0, huma.Error422UnprocessableEntity(fmt.Sprintf("regions: %s monitors can only run in the local region", t))
+		}
+		probes, err := d.Store.ListProbes(ctx)
+		if err != nil {
+			return nil, 0, mapStoreErr(d, err)
+		}
+		known := make(map[string]struct{}, len(probes))
+		for _, p := range probes {
+			known[p.Region] = struct{}{}
+		}
+		for _, r := range regions {
+			if _, ok := known[r]; !ok && r != model.LocalRegion {
+				return nil, 0, huma.Error422UnprocessableEntity(fmt.Sprintf("regions: unknown region %q", r))
+			}
+		}
+	}
+	q := model.DefaultQuorum(len(regions))
+	if quorum != nil {
+		q = *quorum
+		if q < 1 || q > len(regions) {
+			return nil, 0, huma.Error422UnprocessableEntity(fmt.Sprintf("quorum must be between 1 and the number of regions (%d)", len(regions)))
+		}
+	}
+	return regions, q, nil
 }
 
 // validateMonitorDeps checks parent_id, escalation_policy_id and
@@ -295,6 +372,10 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		if err != nil {
 			return nil, err
 		}
+		regions, quorum, err := validateRegions(ctx, d, in.Body.Type, in.Body.Regions, in.Body.Quorum)
+		if err != nil {
+			return nil, err
+		}
 		if err := validateMonitorDeps(ctx, d, in.TeamID, 0, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
 			return nil, err
 		}
@@ -306,6 +387,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			IntervalS: in.Body.IntervalS, RetryIntervalS: in.Body.RetryIntervalS, Retries: retries,
 			TimeoutS: in.Body.TimeoutS, Paused: in.Body.Paused, GroupName: in.Body.GroupName, Tags: in.Body.Tags,
 			ParentID: in.Body.ParentID, EscalationPolicyID: in.Body.EscalationPolicyID, ChannelIDs: in.Body.ChannelIDs,
+			Regions: regions, Quorum: quorum,
 		}
 		if in.Body.Type == model.TypePush {
 			token, err := newPushToken()
@@ -357,6 +439,19 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		if err != nil {
 			return nil, err
 		}
+		// A client that does not send regions (it predates them, or just
+		// does not manage them) keeps the monitor's regions and quorum.
+		reqRegions, reqQuorum := in.Body.Regions, in.Body.Quorum
+		if len(reqRegions) == 0 {
+			reqRegions = existing.EffectiveRegions()
+			if reqQuorum == nil {
+				reqQuorum = new(existing.EffectiveQuorum())
+			}
+		}
+		regions, quorum, err := validateRegions(ctx, d, existing.Type, reqRegions, reqQuorum)
+		if err != nil {
+			return nil, err
+		}
 		if err := validateMonitorDeps(ctx, d, in.TeamID, in.MonitorID, in.Body.ParentID, in.Body.EscalationPolicyID, in.Body.ChannelIDs); err != nil {
 			return nil, err
 		}
@@ -368,6 +463,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 			IntervalS: in.Body.IntervalS, RetryIntervalS: in.Body.RetryIntervalS, Retries: retries,
 			TimeoutS: in.Body.TimeoutS, Paused: in.Body.Paused, GroupName: in.Body.GroupName, Tags: in.Body.Tags,
 			ParentID: in.Body.ParentID, EscalationPolicyID: in.Body.EscalationPolicyID, ChannelIDs: in.Body.ChannelIDs,
+			Regions: regions, Quorum: quorum,
 		}
 		updated, err := d.Store.UpdateMonitor(ctx, m)
 		if err != nil {
@@ -410,7 +506,7 @@ func registerMonitorRoutes(api huma.API, d Deps) {
 		out.Body.Heartbeats = make([]heartbeatBody, len(hbs))
 		for i, h := range hbs {
 			out.Body.Heartbeats[i] = heartbeatBody{
-				ProbeID: h.ProbeID, Time: h.Time, Status: h.Status, LatencyMs: h.LatencyMs, Message: h.Message,
+				ProbeID: h.ProbeID, Region: d.probeRegions.region(ctx, h.ProbeID), Time: h.Time, Status: h.Status, LatencyMs: h.LatencyMs, Message: h.Message,
 			}
 		}
 		return out, nil

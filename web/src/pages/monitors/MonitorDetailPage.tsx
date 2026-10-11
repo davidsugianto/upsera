@@ -20,10 +20,12 @@ import { LatencyChart } from '../../components/LatencyChart'
 import { StatusBadge, StatusDot } from '../../components/StatusBadge'
 import { CopyButton, EmptyState, ErrorMessage, Loading, PageHeader, errorText, formatTime } from '../../components/ui'
 import { useRole } from '../../hooks/useRole'
+import { useNow } from '../../hooks/useNow'
 import { useNumberParam, useTeamId } from '../../hooks/useTeamId'
 import { formatUptime } from '../../lib/beats'
 import { applyAlert } from '../../lib/live'
 import { formToBody, monitorToForm, targetSummary } from '../../lib/monitorForm'
+import { formatAge, regionRows } from '../../lib/probes'
 
 const ranges = { '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000 } as const
 type Range = keyof typeof ranges
@@ -36,6 +38,7 @@ export function MonitorDetailPage() {
   const { can } = useRole(t)
   const [range, setRange] = useState<Range>('1h')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const now = useNow()
 
   const monitor = useMonitor(t, id)
   const uptime = useUptimeSummary(t, id)
@@ -64,6 +67,7 @@ export function MonitorDetailPage() {
     return <ErrorMessage error={monitor.error} />
   }
   const m = monitor.data
+  const regionStateRows = regionRows(m.region_states)
 
   const togglePause = () => {
     save.mutate({ id, body: { ...formToBody(monitorToForm(m)), paused: !m.paused } })
@@ -116,6 +120,43 @@ export function MonitorDetailPage() {
         <UptimeCard label="7d uptime" value={uptime.data?.uptime_7d} />
         <UptimeCard label="30d uptime" value={uptime.data?.uptime_30d} />
       </div>
+
+      {regionStateRows.length > 0 && (
+        <section className="card">
+          <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">Regions</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-muted">
+                <th className="px-4 py-2 font-medium">Region</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Latency</th>
+                <th className="px-4 py-2 font-medium">Last result</th>
+                <th className="px-4 py-2 font-medium">Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regionStateRows.map(({ region, state }) => (
+                <tr key={region} className="border-b border-line last:border-0">
+                  <td className="px-4 py-2 font-mono text-xs">{region}</td>
+                  <td className="px-4 py-2">
+                    <StatusBadge status={state.status} />
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap">{state.last_result_at ? `${state.latency_ms} ms` : '—'}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-muted" title={formatTime(state.last_result_at)}>
+                    {state.last_result_at ? formatAge(now - Date.parse(state.last_result_at)) : 'no result yet'}
+                  </td>
+                  <td className="px-4 py-2 text-muted">{state.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {m.quorum !== undefined && regionStateRows.length > 1 && (
+            <p className="border-t border-line px-4 py-2 text-xs text-muted">
+              Down when {m.quorum} of {regionStateRows.length} regions report down.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">

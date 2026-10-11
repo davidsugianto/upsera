@@ -114,7 +114,7 @@ func registerDashboardRoutes(api huma.API, d Deps) {
 			}
 			for j, h := range hbs { // newest first -> oldest first
 				item.Heartbeats[len(hbs)-1-j] = heartbeatBody{
-					ProbeID: h.ProbeID, Time: h.Time, Status: h.Status, LatencyMs: h.LatencyMs, Message: h.Message,
+					ProbeID: h.ProbeID, Region: d.probeRegions.region(ctx, h.ProbeID), Time: h.Time, Status: h.Status, LatencyMs: h.LatencyMs, Message: h.Message,
 				}
 			}
 			out.Body.Monitors[i] = item

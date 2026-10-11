@@ -31,6 +31,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/model"
 	"github.com/davidsugianto/upsera/internal/netpolicy"
 	"github.com/davidsugianto/upsera/internal/notify"
+	"github.com/davidsugianto/upsera/internal/probes"
 	"github.com/davidsugianto/upsera/internal/scheduler"
 	"github.com/davidsugianto/upsera/internal/secret"
 	"github.com/davidsugianto/upsera/internal/statuspage"
@@ -147,6 +148,10 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	if err != nil {
 		return fmt.Errorf("load docker hosts: %w", err)
 	}
+	probeAuth, err := st.ListProbeAuth(ctx)
+	if err != nil {
+		return fmt.Errorf("load probes: %w", err)
+	}
 	openAlerts, err := st.ListOpenAlerts(ctx)
 	if err != nil {
 		return fmt.Errorf("load open alerts: %w", err)
@@ -207,6 +212,24 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	}, sched)
 	log.Info("scheduler started", "monitors", len(monitors))
 
+	// Remote probes: the registry authenticates them from memory and reports
+	// the ones that go silent. Its callbacks only queue work in the engine.
+	probeReg := probes.NewRegistry(probes.Options{
+		Store:       st,
+		SilentAfter: cfg.ProbeSilentAfter,
+		Logger:      log.With("component", "probes"),
+		OnSilent: func(p model.ProbeAuth, since time.Time) {
+			log.Warn("probe silent", "probe", p.Name, "region", p.Region)
+			engine.ProbeSilent(p.Region, since)
+		},
+		OnRecovered: func(p model.ProbeAuth, at time.Time) {
+			log.Info("probe reporting again", "probe", p.Name, "region", p.Region)
+			engine.ProbeRecovered(p.Region, at)
+		},
+	})
+	probeReg.Set(probeAuth)
+	probeReg.Start(engineCtx)
+
 	pages := statuspage.New(statuspage.Options{
 		Store: st, States: sched, Secret: []byte(cfg.AppSecret), BaseURL: cfg.BaseURL, Loc: loc,
 		Policy: policy, Logger: log.With("component", "statuspage"), DraftAfter: cfg.IncidentDraftAfter,
@@ -239,7 +262,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 
 	srv := &http.Server{
 		Handler: api.NewRouter(api.Deps{
-			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg, Docker: dreg, StatusPages: pages, Public: pages,
+			Store: st, Runner: sched, Policy: policy, Config: cfg, Alerting: engine, Maintenance: mreg, Docker: dreg, StatusPages: pages, Public: pages, Probes: probeReg, ProbeSink: sched,
 			Logger: log.With("component", "api"), Version: version, Events: hub, UI: web.Handler(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -270,6 +293,9 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	}
 	if err := sched.Shutdown(shutdownCtx); err != nil {
 		log.Warn("scheduler shutdown", "err", err)
+	}
+	if err := probeReg.Shutdown(shutdownCtx); err != nil {
+		log.Warn("probe registry shutdown", "err", err)
 	}
 	if err := engine.Shutdown(shutdownCtx); err != nil {
 		log.Warn("alerting shutdown", "err", err)

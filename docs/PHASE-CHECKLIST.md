@@ -1,7 +1,7 @@
 # Upsera phase checklist
 
 Task list for every phase of the build plan ([`upsera-build-plan.html`](upsera-build-plan.html), "Build
-phases"), checked against what is in the repo. Status as of 2026-10-11 (HEAD `292500c`).
+phases"), checked against what is in the repo. Status as of 2026-10-11 (HEAD `4f76335`, Phase 6 uncommitted).
 Read [`HANDOVER.md`](HANDOVER.md) for how things work and what is still open; this file is only the
 checklist. Update it in the same commit that finishes a task.
 
@@ -14,7 +14,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 | 3 | Dashboard | done | `1d16565` |
 | 4 | Docker monitoring | done | `9b37dc9` |
 | 5 | Status pages | done | `a0b8ea2` |
-| 6 | Multi-location probes | not started | — |
+| 6 | Multi-location probes | done (implemented, tests pending verification) | pending |
 | 7 | SLOs and monitors as code | not started | — |
 | 8 | Packaging and launch | partly done (Docker, Caddy, `/metrics`, backup notes) | `1d16565` + packaging slice |
 
@@ -89,17 +89,21 @@ smoke test at the time. ✔
 **Done when:** two public pages render with different monitors, and a subscriber gets the incident email —
 `TestPhase5DoneWhen`. ✔ (Not yet verified: a real browser, real SMTP, real Caddy TLS.)
 
-## Phase 6: Multi-location probes — not started
+## Phase 6: Multi-location probes — implemented (commit pending)
 
-- [ ] `upsera-probe` binary (`cmd/upsera-probe`) and `upsera/upsera-probe` image
-- [ ] Registration with a one-time token, exchanged for a credential kept in `/data`
-- [ ] Probes pull assignments and push results over HTTPS, with local buffering if the server is unreachable
-- [ ] Per-monitor region selection and quorum (DOWN only when failing regions ≥ quorum; stale results
-  older than 2× the interval excluded; PENDING + "probe silent" alert when too few fresh regions)
-- [ ] Per-region latency chart in the dashboard
-- [ ] Alert when a probe goes silent
-- [ ] Probe management UI (Settings → Probes, instance admin) and `probes` table use (a `local` probe row and
-  `heartbeats.probe_id` already exist)
+- [x] `upsera-probe` binary (`cmd/upsera-probe`) and `probe` Docker target (`make docker-build-probe`; the
+  `upsera/upsera-probe` name is not published anywhere yet)
+- [x] Registration with a one-time token (24h, single use), exchanged for a credential kept in `/data`
+- [x] Probes pull assignments (every 15s, ETag) and push results over HTTPS, with an in-memory buffer if the
+  server is unreachable
+- [x] Per-monitor region selection and quorum (DOWN only when failing regions ≥ quorum; stale results
+  older than 2× the interval excluded; PENDING + "probe silent" when too few fresh regions)
+- [x] Per-region latency chart in the dashboard
+- [x] Alert when a probe goes silent (and when it reports again)
+- [x] Probe management UI (Administration → Probes, instance admin) and `probes` table use (`local` probe row
+  and `heartbeats.probe_id` already existed)
+- [ ] Not verified: a real multi-VPS deployment over public HTTPS; the orchestrator's `make check` and the
+  phase 6 end-to-end test result are to be recorded here when run
 
 **Done when:** firewalling the target from one probe's region fires no alert, from two regions fires DOWN,
 and stopping one probe fires "probe silent", not DOWN.

@@ -31,6 +31,8 @@ type Event struct {
 	CertExpiresAt time.Time
 	CertDaysLeft  int
 	FlapCount     int
+	// Region is the probe region of probe_silent / probe_recovered events.
+	Region string
 	// Ackable adds an Acknowledge button where the channel supports one.
 	Ackable bool
 }

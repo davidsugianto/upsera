@@ -1,4 +1,4 @@
-# Upsera handover: Phases 1–5 done, Phases 6–8 next
+# Upsera handover: Phases 1–6 done (6 pending commit), Phases 7–8 next
 
 Updated 2026-10-11 for the next session. Read this first, then `docs/upsera-build-plan.html`
 (v0.5, the product plan; its "Build phases" section is the roadmap). `docs/PHASE-CHECKLIST.md` lists
@@ -19,6 +19,7 @@ the first push is the first run of the `test` and `web` jobs, and the ping test 
 | 3 Dashboard (+ Dockerfile, compose, Makefile) | `1d16565` | everything manageable from the browser; live SSE updates (`TestPhase3LiveDashboard`) |
 | 4 Docker monitoring | `9b37dc9` | a watched container that stops raises an alert saying why (`TestPhase4DoneWhen`) |
 | 5 Status pages | `a0b8ea2` | two public pages with different monitors render, and a subscriber gets the incident email (`TestPhase5DoneWhen`) |
+| 6 Multi-location probes | pending | firewalling the target from one region fires no alert, from two fires DOWN, and stopping one probe fires "probe silent" not DOWN (phase 6 test in `cmd/upsera`) |
 
 - `make check` (gofmt, vet, eslint, tsc, `go test -race ./...`, vitest, web build) exits 0: 17 Go
   packages, 60 web tests. Takes about 3 minutes (testcontainers start Postgres 17 containers).
@@ -27,7 +28,7 @@ the first push is the first run of the `test` and `web` jobs, and the ping test 
 - Frontend in `web/`: React 19, Vite 8, TypeScript 5.9 (forced by `openapi-typescript` and
   `typescript-eslint`), Tailwind 4, react-router 8, TanStack Query 5, openapi-fetch, uPlot. It is
   embedded into the binary with `go:embed` (`web/web.go`).
-- Not done yet: Phase 6 (multi-location probes), 7 (SLOs, `upsctl`), 8 (docs site, README screenshots,
+- Not done yet: Phase 7 (SLOs, `upsctl`), 8 (docs site, README screenshots,
   clean-host timing; the Caddy profile, `/metrics` and backup notes are in). The Dockerfile, `deploy/docker-compose.yml` and `Makefile` came forward from Phase 8.
 
 ## 2. Running things
@@ -56,25 +57,29 @@ zsh does not word-split unquoted variables, BSD `sed -i` needs `''`.
 | Path | What |
 |---|---|
 | `cmd/upsera/main.go` | Wiring: config → store (retrying connect) → migrate → load monitors/states/channels/policies/windows/Docker hosts/open alerts/cert keys → secret box → netpolicy → registries → alerting engine → scheduler → status page service → jobs → HTTP. **Start order: `sched.Start` then `engine.Start`** (the engine reconciles open alerts against live states). Shutdown: HTTP drain → scheduler stop + flush → engine stop → status page worker → jobs → DB close. Startup also seeds the `local` Docker host (see §5). |
-| `cmd/upsera/*_test.go` | End-to-end "done when" tests through the real `run()` for phases 1–5; helpers `startServer`, `setupAdmin`, fake Telegram, `testutil.FakeSMTP`. |
-| `internal/config` | Env config (all vars in README). `TZ` drives rollup days and recurring windows. Phase 5 added `INCIDENT_DRAFT_AFTER`, `TRUSTED_PROXIES`. |
+| `cmd/upsera-probe` | The remote probe agent's `main` (env parsing, `version`); the logic is in `internal/probe`. Built into the `probe` Docker target (`make probe`, `make docker-build-probe`). |
+| `cmd/upsera/*_test.go` | End-to-end "done when" tests through the real `run()` for phases 1–6; helpers `startServer`, `setupAdmin`, fake Telegram, `testutil.FakeSMTP`. |
+| `internal/config` | Env config (all vars in README). `TZ` drives rollup days and recurring windows. Phase 5 added `INCIDENT_DRAFT_AFTER`, `TRUSTED_PROXIES`; Phase 6 `PROBE_SILENT_AFTER`. |
 | `internal/model` | Shared types. `Status` int16 (0 down, 1 up, 2 pending, 3 maintenance). `alerting.go`, `docker.go` (DockerHost, DockerTLS), `status.go` (StatusPage, Incident, Subscriber, Delivery, SMTPSettings, enums). |
 | `internal/secret` | `Box`: AES-256-GCM, key = HKDF-SHA256(`APP_SECRET`), ciphertext `v1:` + base64url. Encrypts channel configs, Docker host TLS material and the instance SMTP settings. |
-| `internal/store` | pgx store. **Every table in schema `upsera`, every query schema-qualified.** Migrations `00001`–`00004` (committed — never edit; add a new one). Files: `monitors`, `alerting`, `dashboard`, `docker`, `status`, `tokens`, `accounts`. Sentinels: `ErrNotFound`, `ErrConflict`, `ErrInUse`, `ErrSetupDone`, `ErrLastOwner`. `SetSecretBox` must be called before encrypted reads/writes (testutil does it). |
+| `internal/store` | pgx store. **Every table in schema `upsera`, every query schema-qualified.** Migrations `00001`–`00005` (`00005_probes.sql` is new and uncommitted; once committed never edit, add a new one). Files: `monitors`, `alerting`, `dashboard`, `docker`, `status`, `tokens`, `accounts`, `probes` (probe rows, registration tokens and credential hashes, `last_seen_at`). Sentinels: `ErrNotFound`, `ErrConflict`, `ErrInUse`, `ErrSetupDone`, `ErrLastOwner`, `ErrLocalProbe`. `SetSecretBox` must be called before encrypted reads/writes (testutil does it). |
 | `internal/checker` | Per-type config validation + checks: http/keyword/tcp/ping/dns/docker; push has a watchdog. |
 | `internal/dockerapi` | Minimal Docker Engine API client over `net/http` (tcp/http(s)/unix, optional TLS; ping, container inspect/list) and the per-host `Registry` the checker reads (no DB on the check path). |
 | `internal/netpolicy` | Outbound target policy checked at dial time; used by checks **and** every notifier and the webhook/SMTP deliveries. `DialDockerHost`/`CheckDockerHost` refuse only unspecified/link-local/metadata (the Docker host itself and private ranges are allowed). Notifier HTTP clients never use `HTTP(S)_PROXY`. |
-| `internal/scheduler` | In-memory monitor cache, goroutine per monitor, heartbeat buffer + flusher, `nextState` (UP / PENDING / DOWN), flap damping, maintenance and pause → MAINTENANCE. Emits `model.Transition` via `OnTransition` **under its lock, in order** (callback must not block). |
+| `internal/probeproto` | Wire types, paths and limits shared by the server and the agent (register, assignments, results; `MaxResultsPerBatch`, `MaxBatchBytes`). |
+| `internal/probe` | The `upsera-probe` agent: registration and credential file, assignment polling (15s, ETag), a goroutine per assigned monitor using `checker.New(netpolicy)`, in-memory ring buffer of results (drop oldest), batched upload. 401 → exit non-zero. |
+| `internal/probes` | Server-side `Registry` of registered probes: in-memory `Authenticate` (sha256 → map), `Seen`, `Online`, silent detection with startup grace and the background `last_seen_at` flush. Calls `OnSilent` / `OnRecovered` into the alerting engine. |
+| `internal/scheduler` | In-memory monitor cache, goroutine per monitor, heartbeat buffer + flusher, `nextState` (UP / PENDING / DOWN), flap damping, maintenance and pause → MAINTENANCE. Emits `model.Transition` via `OnTransition` **under its lock, in order** (callback must not block). `regions.go` (Phase 6) combines per-region results (`Report`, `Assignments`) into one monitor state; local-only monitors keep the original single-region path. |
 | `internal/maintenance` | `ActiveAt` and the `Registry` cache the scheduler consults. |
 | `internal/notify` | `Notifier` per channel type, `Dispatcher`, `AckListeners`, and `SendMail` (shared SMTP sender used by the smtp channel and by subscriber email). |
 | `internal/alerting` | `Engine`: transitions → alerts, escalation, acks, dependency suppression, flap handling, cert warnings, outbox for alerts and notification log (survives DB outage). |
 | `internal/events` | In-memory per-team hub for the dashboard's SSE stream; `Publish` never blocks, slow subscribers are dropped. |
 | `internal/statuspage` | The public side of status pages: server-rendered page and RSS (`handler`, `render`, `templates/`, `status.css`), 30s `cache`, custom-domain `domains` (Host middleware, `TLSAllowed`), `subscribe`/`token`/`clientip` (double opt-in, signed links, rate limits), and the background `worker`/`mail` (auto-drafting, outbox delivery). `service.go` is the contract; `fakestore_test.go` the shared test fake. |
 | `internal/jobs` | Hourly: settings → rollup → prune heartbeats → expired sessions → notification log (30 days) → (optional interface) unconfirmed subscribers (7 days) and finished deliveries (30 days). |
-| `internal/api` | chi + huma v2. Session cookie + CSRF header, or `Bearer ups_...` team token. Routes by file: `monitors`, `channels`, `policies`, `alerts`, `maintenance`, `dashboard` (overview, uptime summary, events), `events` (SSE), `docker_hosts`, `status_pages` (pages, incidents, subscribers), `admin` (users, settings incl. SMTP), `teams`, `auth`, `audit`. |
+| `internal/api` | chi + huma v2. Session cookie + CSRF header, or `Bearer ups_...` team token. Routes by file: `monitors`, `channels`, `policies`, `alerts`, `maintenance`, `dashboard` (overview, uptime summary, events), `events` (SSE), `docker_hosts`, `status_pages` (pages, incidents, subscribers), `admin` (users, settings incl. SMTP), `teams`, `auth`, `audit`, `probes` (`/api/regions`, admin probe CRUD and registration tokens), `probe_protocol` (the unauthenticated register and bearer-authenticated assignments / results endpoints the agent calls). |
 | `internal/testutil` | `Store(t)` / `PostgresURL(t)` testcontainers helpers; `FakeSMTP(t)`. |
 | `web/` | React app; `web/web.go` embeds `web/dist` (SPA fallback, security headers). `src/api/schema.d.ts` is generated (`make gen-api`). |
-| `deploy/`, `Dockerfile`, `Makefile` | distroless runtime image, compose (`upsera`, `postgres` under profile `local-db`, `docker-proxy`). The Caddy `https` profile is not written yet (Phase 8). |
+| `deploy/`, `Dockerfile`, `Makefile` | distroless runtime image (the server stage is the last stage, so a plain `docker build .` builds the server; `--target probe` builds the `upsera-probe` image with `/data` pre-created and owned by nonroot), compose (`upsera`, `postgres` under profile `local-db`, `docker-proxy`, optional Caddy `https` profile). |
 
 ### Contracts to keep stable
 
@@ -85,6 +90,7 @@ zsh does not word-split unquoted variables, BSD `sed -i` needs `''`.
   `api.StatusPageCache` (`InvalidatePage`, `InvalidateAll`, `ReloadDomains`; call after every page or
   incident write) and `api.PublicPages` (`Handler`, `HostMiddleware`, `TLSAllowed`) — the last two are
   implemented by `*statuspage.Service`.
+- `api.ProbeRegistry` (`*probes.Registry`: `Authenticate`, `Seen`, `Online`, `Add`, `Remove`) and `api.ProbeSink` (`*scheduler.Scheduler`: `Report`, `Assignments`, `Assigned`); if either `Deps` field is nil the probe endpoints are not registered. `api.Runner` was deliberately not changed. A probe credential (`upp_`) and a team token (`ups_`) are never interchangeable.
 - `statuspage.Store` (subset of `*store.Store`) and `statuspage.States` (`*scheduler.Scheduler`);
   `scheduler.Checker` / `scheduler.Store` / `scheduler.Maintenance`; `alerting.Store` / `alerting.StateSource`;
   `jobs.Store`; `notify.Notifier`.
@@ -147,6 +153,34 @@ Status pages (Phase 5):
 - Instance SMTP (admin only) is stored encrypted in `instance_settings.smtp`; `GET` shows the password as
   `********`, `PUT` omitted = keep, `null` = clear, object = set; `POST /api/admin/settings/smtp/test`.
 
+Multi-location probes (Phase 6; uncommitted at the time of writing):
+- One probe per region (`probes.region` is UNIQUE); the built-in checker is the probe row `local` and stays a
+  region, so a monitor can mix `local` with remote regions. There is no `REGION` env on the agent: the region
+  comes from the probe row the credential belongs to.
+- Registration: instance admin creates a probe (name, region) and gets `upr_...` (24h, single use); the agent
+  exchanges it for `upp_...` stored in `$DATA_DIR/credential` (0600). Only SHA-256 hashes are stored. A new
+  registration token revokes the current credential; deleting a probe is refused (409) while a monitor lists
+  its region.
+- The agent polls assignments every 15s with an ETag (`If-None-Match` → 304), runs the checks and uploads
+  batches; results sit in an in-memory ring buffer (default 10000, oldest dropped), so a restarted agent loses
+  what it had not sent. It sends raw OK / not-OK; **retries are counted on the server per region**
+  (`RetryIntervalS` after a failure while within Retries, else `IntervalS`).
+- Per-region results go through `nextState`; regions are combined into the monitor state (quorum, fresh =
+  `2 × interval`, startup grace, "probe silent" → PENDING never DOWN). Contract details: the scheduler's
+  `regions.go`. `monitor_state.regions` holds per-region state.
+- `heartbeats.status` is the monitor's overall state after that region's result; latency and message are the
+  region's own; `probe_id` says which region. **One heartbeat row per region per check**: storage and the
+  14-day retention scale with the number of regions.
+- "Probe silent" (`PROBE_SILENT_AFTER`, default 2m) notifies each team with an unpaused monitor in that region
+  on its default channels, plus a "reporting again" message. No ack or escalation. A registered probe gets a
+  startup grace of `PROBE_SILENT_AFTER` after the server starts. Probes that were created but not yet registered
+  are never reported silent.
+- Only http, keyword, tcp, ping and dns monitors may use remote regions; push and docker are local only.
+  Probes receive full monitor configs, **including credentials in headers and basic auth** (documented in the
+  README trust model). `block_private_targets` is passed to probes in the assignments response.
+- The register endpoint is rate limited in memory (10/min per client IP; `X-Forwarded-For` counts only from `TRUSTED_PROXIES`, so behind a proxy without it every registration shares one bucket). Assignments and results never touch the DB
+  synchronously (`last_seen_at` is flushed in the background).
+
 ## 5. Still open
 
 From Phase 5 reviews (none blocking, all accepted):
@@ -164,25 +198,30 @@ From Phase 5 reviews (none blocking, all accepted):
   OpenAPI schema (two casts in `web/src/api/queries.ts`), `ReloadDomains` runs after scheduler start in `main.go`.
 
 From earlier phases:
-- [ ] `clientIP` for the login limiter ignores `X-Forwarded-For` (`TRUSTED_PROXIES` covers only subscribe).
+- [ ] `clientIP` for the login limiter ignores `X-Forwarded-For` (`TRUSTED_PROXIES` covers only subscribe and probe registration; the login limiter is the one place that still ignores it).
 - [ ] `block_private_targets` defaults to `false` (Docker hosts ignore it on purpose).
 - [ ] Run CI on GitHub once.
 - [ ] No automated test for the `HTTP(S)_PROXY` fix (Go never proxies loopback).
 - [ ] Telegram/Slack acks could target another team's alert if its UUID were known (low risk).
 - [ ] Phase 3 out-of-scope items: team rename/delete, audit/notification log UI, 7d latency chart, code splitting.
 
+Phase 6:
+- [ ] Alerts for silent probes are not acknowledgeable or escalated, by decision.
+- [ ] Probe buffer is in memory only (an agent restart during a server outage loses unsent results).
+- [ ] Probes are never auto-upgraded; the version they report is shown in the admin UI only.
+
 Not verified: Chrome/Firefox really send a real Origin from the `same-origin` page; real SMTP and Caddy TLS;
-upgrading an existing database to migration 4.
+upgrading an existing database to migration 4 (and now 5); **a real multi-VPS deployment: probes on other
+hosts reaching the server over public HTTPS (TLS, proxies, clock skew, real latency)**; the `upsera/upsera-probe`
+image published to a registry (only built locally with `make docker-build-probe`).
 
 ## 6. Next phases (from the plan)
 
 - **Phase 8 slice: done** (`deploy/Caddyfile` + compose `https` profile with a fixed `172.29.0.0/24`
   subnet for `TRUSTED_PROXIES`, `GET /metrics` in `internal/api/metrics.go`, `docs/BACKUP.md`, README
   comparison table). Still to do: smoke a real certificate on a public host, README screenshots, docs site.
-- **Phase 6 Multi-location probes:** `upsera-probe` binary/image registering with a one-time token, pulling
-  assignments and pushing results over HTTPS with local buffering; per-monitor regions + quorum; per-region
-  latency chart; "probe silent" alert. `probe_id` already exists on heartbeats (the built-in checker is probe
-  `local`).
+- **Phase 6 Multi-location probes: implemented, pending commit** (see §4). `upsera-probe` binary/image, regions +
+  quorum, per-region latency chart, "probe silent" alert, Administration → Probes.
 - **Phase 7 SLOs and monitors as code:** SLO targets, error budget, burn-rate alerts, DEGRADED detection,
   `upsctl export|diff|apply`.
 - Plan for each with `/plan` (ask about material trade-offs), and keep the review → fix → test → commit gates.

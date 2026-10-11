@@ -8,6 +8,7 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"sync"
@@ -91,6 +92,16 @@ type Scheduler struct {
 	flapping map[int64]bool
 	stopped  bool
 
+	// Multi-region bookkeeping (see regions.go), all guarded by mu. regions
+	// holds each multi-region monitor's per-region states; the maps are
+	// copy-on-write so MonitorState.Regions handed out by State is a
+	// snapshot. graceFrom is when a monitor's startup grace period began
+	// (default startedAt); maintSeen marks monitors that were in maintenance.
+	regions   map[int64]map[string]model.RegionState
+	graceFrom map[int64]time.Time
+	maintSeen map[int64]bool
+	startedAt time.Time
+
 	runCtx context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -112,6 +123,10 @@ type Scheduler struct {
 	unit         time.Duration
 	jitter       func(max time.Duration) time.Duration
 	pingInterval time.Duration
+	// now is the clock of the multi-region paths (freshness, grace period);
+	// sweepInterval is how often their staleness is re-evaluated.
+	now           func() time.Time
+	sweepInterval time.Duration
 }
 
 // New builds a Scheduler. Call Start to begin running checks.
@@ -146,11 +161,18 @@ func New(st Store, ck Checker, opts Options) *Scheduler {
 		flaps:    make(map[int64][]time.Time),
 		flapping: make(map[int64]bool),
 
+		regions:   make(map[int64]map[string]model.RegionState),
+		graceFrom: make(map[int64]time.Time),
+		maintSeen: make(map[int64]bool),
+
 		dbReachable: true,
 
 		unit:         time.Second,
 		jitter:       defaultJitter,
 		pingInterval: 10 * time.Second,
+
+		now:           time.Now,
+		sweepInterval: defaultSweepInterval,
 	}
 }
 
@@ -170,7 +192,14 @@ func (s *Scheduler) Start(ctx context.Context, monitors []model.Monitor, states 
 	s.runCtx, s.cancel = context.WithCancel(ctx)
 
 	s.mu.Lock()
+	s.startedAt = s.now()
 	for _, st := range states {
+		if len(st.Regions) > 0 {
+			// Seed the per-region states; Upsert below prunes the regions a
+			// monitor no longer has.
+			st.Regions = maps.Clone(st.Regions)
+			s.regions[st.MonitorID] = st.Regions
+		}
 		s.states[st.MonitorID] = st
 		// Only the count is persisted, not the change times: approximate
 		// them with the last check so flapping survives a restart and
@@ -182,8 +211,9 @@ func (s *Scheduler) Start(ctx context.Context, monitors []model.Monitor, states 
 	}
 	s.mu.Unlock()
 
-	s.wg.Add(1)
+	s.wg.Add(2)
 	go s.flushLoop(s.runCtx)
+	go s.sweepLoop(s.runCtx)
 
 	for _, m := range monitors {
 		s.upsert(m, true)
@@ -207,6 +237,7 @@ func (s *Scheduler) upsert(m model.Monitor, jittered bool) {
 		delete(s.pushIdx, old.PushToken)
 	}
 	s.monitors[m.ID] = m
+	s.syncRegionsLocked(m)
 	if m.Type == model.TypePush && m.PushToken != "" {
 		s.pushIdx[m.PushToken] = m.ID
 	}
@@ -235,16 +266,28 @@ func (s *Scheduler) upsert(m model.Monitor, jittered bool) {
 		return
 	}
 
+	multi := isMultiRegion(m)
+	if multi && !m.InRegion(model.LocalRegion) {
+		// Checked by remote probes only: no local loop. Re-evaluate the
+		// regions against the new config (quorum, regions, interval).
+		s.reevaluate(m.ID, true)
+		return
+	}
+
 	ctx, cancel := context.WithCancel(s.runCtx)
 	done := make(chan struct{})
 	slot.cancel = cancel
 	slot.done = done
 	s.wg.Add(1)
-	if m.Type == model.TypePush {
+	switch {
+	case m.Type == model.TypePush:
 		resetCh := make(chan struct{}, 1)
 		slot.resetCh = resetCh
 		go s.runPushLoop(ctx, m, resetCh, done)
-	} else {
+	case multi:
+		go s.runLocalRegionLoop(ctx, m, jittered, done)
+		s.reevaluate(m.ID, true)
+	default:
 		go s.runCheckLoop(ctx, m, jittered, done)
 	}
 }
@@ -283,6 +326,9 @@ func (s *Scheduler) Remove(id int64) {
 	delete(s.dirty, id)
 	delete(s.flaps, id)
 	delete(s.flapping, id)
+	delete(s.regions, id)
+	delete(s.graceFrom, id)
+	delete(s.maintSeen, id)
 	if hadMonitor && m.PushToken != "" {
 		delete(s.pushIdx, m.PushToken)
 	}

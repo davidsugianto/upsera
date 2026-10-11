@@ -9,9 +9,12 @@ export type ChannelType = S['ChannelBody']['type']
 
 export type MonitorState = S['MonitorStateBody']
 /** Monitor as served: state is null until the monitor's first check. */
-export type Monitor = Omit<S['MonitorBody'], 'state'> & { state: MonitorState | null }
+export type Monitor = Omit<S['MonitorBody'], 'state'> & {
+  state: MonitorState | null
+}
 export type MonitorRequest = S['MonitorRequestBody']
-export type Heartbeat = S['HeartbeatBody']
+/** Heartbeat: `region` names the probe region that produced it. */
+export type Heartbeat = S['HeartbeatBody'] & { region?: string }
 export type Alert = S['AlertBody']
 export type Channel = S['ChannelBody']
 export type ChannelRequest = S['ChannelRequestBody']
@@ -56,6 +59,13 @@ export type IncidentStatus = S['IncidentBody']['status']
 export type IncidentSeverity = S['IncidentBody']['severity']
 export type Subscriber = S['SubscriberBody']
 export type WebhookSubscriberRequest = S['WebhookSubscriberRequestBody']
+
+export type RegionState = S['RegionStateBody']
+export type Region = S['RegionBody']
+export type Probe = S['ProbeBody']
+/** CreatedProbe is the POST /api/admin/probes answer; the token is shown once. */
+export type CreatedProbe = S['CreateProbeOutputBody']
+export type ProbeRegistration = S['ProbeTokenBody']
 
 /** SSE `monitor` event: a monitor changed state. */
 export type MonitorEvent = {

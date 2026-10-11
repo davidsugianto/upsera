@@ -83,6 +83,8 @@ type Engine struct {
 	busMu   sync.Mutex
 	pending []model.Transition
 	signal  chan struct{}
+	// probePending holds queued probe_silent / probe_recovered events (see probe.go).
+	probePending []probeEvent
 
 	mu       sync.Mutex
 	states   StateSource
@@ -248,19 +250,22 @@ func (e *Engine) loop(ctx context.Context) {
 	}
 }
 
-// drain applies every queued transition in order.
+// drain applies every queued transition, then every queued probe event, in order.
 func (e *Engine) drain() {
 	e.busMu.Lock()
-	ts := e.pending
-	e.pending = nil
+	ts, ps := e.pending, e.probePending
+	e.pending, e.probePending = nil, nil
 	e.busMu.Unlock()
-	if len(ts) == 0 {
+	if len(ts) == 0 && len(ps) == 0 {
 		return
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, t := range ts {
 		e.handleLocked(t)
+	}
+	for _, p := range ps {
+		e.handleProbeLocked(p)
 	}
 }
 

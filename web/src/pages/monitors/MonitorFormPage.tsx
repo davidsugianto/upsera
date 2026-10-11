@@ -7,6 +7,7 @@ import {
   useMonitor,
   useMonitors,
   usePolicies,
+  useRegions,
   useSaveMonitor,
 } from '../../api/queries'
 import type { MonitorType } from '../../api/types'
@@ -15,13 +16,17 @@ import { ErrorMessage, Loading, PageHeader, fieldError } from '../../components/
 import { Link } from 'react-router'
 import { useNumberParam, useTeamId } from '../../hooks/useTeamId'
 import {
+  canRunRemotely,
+  clampQuorum,
   defaultMonitorForm,
+  defaultQuorum,
   dnsRecordTypes,
   formToBody,
   httpMethods,
   methodsWithBody,
   monitorToForm,
   monitorTypes,
+  setRegions,
   validateMonitorForm,
   type MonitorForm,
 } from '../../lib/monitorForm'
@@ -78,6 +83,8 @@ function MonitorEditor({ initial, editingId }: { initial: MonitorForm; editingId
       parentId: f.parentId,
       policyId: f.policyId,
       channelIds: f.channelIds,
+      // Remote regions only apply to types that can run on a probe; others fall back to local.
+      ...(canRunRemotely(type) ? { regions: f.regions, quorum: f.quorum } : {}),
     }))
   }
 
@@ -152,6 +159,8 @@ function MonitorEditor({ initial, editingId }: { initial: MonitorForm; editingId
         </div>
 
         <TypeFields form={form} set={set} err={err} />
+
+        <RegionFields form={form} setForm={setForm} err={err} />
 
         <Select
           label="Parent monitor"
@@ -441,6 +450,95 @@ function DockerFields({
         UP while the container runs (and its healthcheck, if it has one, is healthy). Alerts say why: for example
         &quot;exited (137)&quot; or &quot;unhealthy&quot;.
       </p>
+    </div>
+  )
+}
+
+/** RegionFields picks the regions a monitor runs in and how many must agree it is down. */
+function RegionFields({
+  form,
+  setForm,
+  err,
+}: {
+  form: MonitorForm
+  setForm: (update: (f: MonitorForm) => MonitorForm) => void
+  err: (name: string) => string | undefined
+}) {
+  const regions = useRegions()
+
+  if (!canRunRemotely(form.type)) {
+    return (
+      <div className="border-t border-line pt-5">
+        <div className="text-sm font-medium">Regions</div>
+        <p className="mt-1 text-xs text-muted">
+          {form.type === 'push'
+            ? 'Push monitors are reported by your own jobs, so they are not checked from probe regions.'
+            : 'Docker monitors read the container state from the Docker host, so they always run on this server.'}
+        </p>
+      </div>
+    )
+  }
+
+  const known = regions.data ?? []
+  // Keep a selected region visible even if it is no longer listed (for example a deleted probe).
+  const options = [
+    ...known,
+    ...form.regions.filter((r) => !known.some((k) => k.name === r)).map((name) => ({ name, online: false })),
+  ]
+  const toggle = (name: string, on: boolean) =>
+    setForm((f) => setRegions(f, on ? [...f.regions, name] : f.regions.filter((r) => r !== name)))
+  const n = form.regions.length
+
+  return (
+    <div className="space-y-3 border-t border-line pt-5">
+      <fieldset>
+        <legend className="mb-1 block text-sm font-medium">Regions</legend>
+        {regions.isPending ? (
+          <p className="text-sm text-muted">Loading regions…</p>
+        ) : regions.error ? (
+          <ErrorMessage error={regions.error} />
+        ) : (
+          <div className="grid gap-1.5 rounded-md border border-line p-2 sm:grid-cols-2">
+            {options.map((r) => (
+              <Checkbox
+                key={r.name}
+                label={
+                  <>
+                    {r.name}
+                    {r.name === 'local' && <span className="text-muted"> (this server)</span>}
+                    {!r.online && <span className="text-muted"> (offline)</span>}
+                  </>
+                }
+                checked={form.regions.includes(r.name)}
+                onChange={(on) => toggle(r.name, on)}
+              />
+            ))}
+          </div>
+        )}
+        {err('regions') ? (
+          <p className="mt-1 text-xs text-down">{err('regions')}</p>
+        ) : (
+          <p className="mt-1 text-xs text-muted">
+            The monitor is checked from every selected region. Probes are added by an instance admin.
+          </p>
+        )}
+      </fieldset>
+      {n > 1 && (
+        <NumberField
+          label="Quorum"
+          value={form.quorum}
+          onChange={(v) => setForm((f) => ({ ...f, quorum: v }))}
+          min={1}
+          max={n}
+          error={err('quorum')}
+          help={
+            <>
+              Down when at least {Number.isNaN(form.quorum) ? defaultQuorum(n) : clampQuorum(form.quorum, n)} of {n}{' '}
+              regions report down (majority is {defaultQuorum(n)}). A region that stops reporting never counts as down.
+            </>
+          }
+        />
+      )}
     </div>
   )
 }

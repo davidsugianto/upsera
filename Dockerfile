@@ -17,8 +17,23 @@ COPY . .
 COPY --from=web /src/web/dist/app ./web/dist/app
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/upsera ./cmd/upsera
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/upsera-probe ./cmd/upsera-probe
+# Distroless has no shell, so create the probe's data directory here and copy
+# it in owned by nonroot (a fresh named volume inherits that ownership).
+RUN mkdir -p /out/data
 
-# 3. Runtime: distroless, non-root. Ping uses unprivileged ICMP sockets, so
+# 3. Remote probe agent (`docker build --target probe`). It keeps its
+# credential in /data, so mount a volume there. Same ping note as below.
+FROM gcr.io/distroless/static-debian12:nonroot AS probe
+COPY --from=build /out/upsera-probe /upsera-probe
+COPY --from=build --chown=nonroot:nonroot /out/data /data
+USER nonroot:nonroot
+ENV DATA_DIR=/data
+VOLUME /data
+ENTRYPOINT ["/upsera-probe"]
+
+# 4. Server runtime (keep this the LAST stage so a plain `docker build .`
+# builds the server): distroless, non-root. Ping uses unprivileged ICMP sockets, so
 # no CAP_NET_RAW is needed (the host must allow it via ping_group_range,
 # which Docker does by default).
 FROM gcr.io/distroless/static-debian12:nonroot

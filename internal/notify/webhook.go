@@ -53,6 +53,7 @@ type webhookPayload struct {
 	DowntimeS     int64   `json:"downtime_s"`
 	CertExpiresAt *string `json:"cert_expires_at"`
 	CertDaysLeft  int     `json:"cert_days_left"`
+	Region        string  `json:"region,omitempty"`
 }
 
 func (w *webhook) Send(ctx context.Context, cfg json.RawMessage, ev Event) error {
@@ -72,6 +73,7 @@ func (w *webhook) Send(ctx context.Context, cfg json.RawMessage, ev Event) error
 		p.CertExpiresAt = new(ev.CertExpiresAt.UTC().Format(time.RFC3339))
 	}
 	p.CertDaysLeft = ev.CertDaysLeft
+	p.Region = ev.Region
 	_, err = postJSON(ctx, w.client, c.URL, c.Headers, p)
 	return err
 }

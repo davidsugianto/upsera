@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Monitor } from '../api/types'
-import { defaultMonitorForm, formToBody, monitorToForm, targetSummary, validateMonitorForm } from './monitorForm'
+import {
+  canRunRemotely,
+  clampQuorum,
+  defaultMonitorForm,
+  defaultQuorum,
+  formToBody,
+  monitorToForm,
+  setRegions,
+  targetSummary,
+  validateMonitorForm,
+} from './monitorForm'
 
 describe('formToBody', () => {
   it('emits only http keys for http monitors', () => {
@@ -118,5 +128,72 @@ describe('docker monitors', () => {
   })
   it('summarizes the target', () => {
     expect(targetSummary({ type: 'docker', config: { docker_host_id: 1, container: 'web' } })).toBe('docker: web')
+  })
+})
+
+describe('regions and quorum', () => {
+  it('defaultQuorum is the majority', () => {
+    expect([1, 2, 3, 4, 5].map(defaultQuorum)).toEqual([1, 2, 2, 3, 3])
+  })
+  it('clampQuorum keeps 1..n and treats NaN as the majority', () => {
+    expect(clampQuorum(0, 3)).toBe(1)
+    expect(clampQuorum(9, 3)).toBe(3)
+    expect(clampQuorum(2, 3)).toBe(2)
+    expect(clampQuorum(NaN, 3)).toBe(2)
+  })
+  it('only http, keyword, tcp, ping and dns can run remotely', () => {
+    expect(canRunRemotely('http')).toBe(true)
+    expect(canRunRemotely('dns')).toBe(true)
+    expect(canRunRemotely('push')).toBe(false)
+    expect(canRunRemotely('docker')).toBe(false)
+  })
+  it('defaults to the local region with quorum 1', () => {
+    const f = defaultMonitorForm('http')
+    expect(f.regions).toEqual(['local'])
+    expect(f.quorum).toBe(1)
+    expect(formToBody(f)).toMatchObject({ regions: ['local'], quorum: 1 })
+  })
+  it('setRegions follows the majority while the quorum is the default', () => {
+    let f = defaultMonitorForm('http')
+    f = setRegions(f, ['local', 'sg-1', 'fra-1'])
+    expect(f.quorum).toBe(2)
+    f = setRegions(f, ['local', 'sg-1', 'fra-1', 'nyc-1', 'syd-1'])
+    expect(f.quorum).toBe(3)
+  })
+  it('setRegions keeps a custom quorum but clamps it', () => {
+    let f = setRegions(defaultMonitorForm('http'), ['local', 'sg-1', 'fra-1'])
+    f = { ...f, quorum: 3 }
+    f = setRegions(f, ['local', 'sg-1', 'fra-1', 'nyc-1'])
+    expect(f.quorum).toBe(3)
+    f = setRegions(f, ['local', 'sg-1'])
+    expect(f.quorum).toBe(2)
+    f = setRegions(f, ['sg-1'])
+    expect(f.quorum).toBe(1)
+  })
+  it('sends the selected regions and quorum', () => {
+    const f = setRegions(defaultMonitorForm('tcp'), ['local', 'sg-1', 'fra-1'])
+    expect(formToBody(f)).toMatchObject({ regions: ['local', 'sg-1', 'fra-1'], quorum: 2 })
+  })
+  it('forces push and docker monitors to the local region', () => {
+    const f = { ...defaultMonitorForm('push'), regions: ['sg-1', 'local'], quorum: 2 }
+    expect(formToBody(f)).toMatchObject({ regions: ['local'], quorum: 1 })
+    expect(validateMonitorForm({ ...defaultMonitorForm('push'), name: 'p' })).toEqual({})
+  })
+  it('monitorToForm reads regions and quorum, defaulting old monitors to local', () => {
+    const base = { type: 'http', name: 'a', group_name: '', config: {}, state: null } as unknown as Monitor
+    const old = monitorToForm(base)
+    expect(old.regions).toEqual(['local'])
+    expect(old.quorum).toBe(1)
+    const multi = monitorToForm({ ...base, regions: ['local', 'sg-1', 'fra-1'], quorum: 3 } as unknown as Monitor)
+    expect(multi.regions).toEqual(['local', 'sg-1', 'fra-1'])
+    expect(multi.quorum).toBe(3)
+  })
+  it('validates regions and quorum', () => {
+    const f = { ...defaultMonitorForm('http'), name: 'a' }
+    expect(validateMonitorForm({ ...f, regions: [] }).regions).toBeTruthy()
+    expect(validateMonitorForm({ ...f, regions: ['local', 'sg-1'], quorum: 3 }).quorum).toBeTruthy()
+    expect(validateMonitorForm({ ...f, regions: ['local', 'sg-1'], quorum: 0 }).quorum).toBeTruthy()
+    expect(validateMonitorForm({ ...f, regions: ['local', 'sg-1'], quorum: NaN }).quorum).toBeTruthy()
+    expect(validateMonitorForm({ ...f, regions: ['local', 'sg-1'], quorum: 2 })).toEqual({})
   })
 })

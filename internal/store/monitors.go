@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -12,13 +13,14 @@ import (
 
 const monitorCols = `id, team_id, name, type, config, interval_s, retry_interval_s, retries, timeout_s,
 	paused, group_name, tags, coalesce(push_token, ''), created_at, updated_at, parent_id, escalation_policy_id,
+	regions, quorum,
 	ARRAY(SELECT mc.channel_id FROM upsera.monitor_channels mc WHERE mc.monitor_id = monitors.id ORDER BY mc.channel_id)`
 
 func scanMonitor(row pgx.Row) (model.Monitor, error) {
 	var m model.Monitor
 	err := row.Scan(&m.ID, &m.TeamID, &m.Name, &m.Type, &m.Config, &m.IntervalS, &m.RetryIntervalS, &m.Retries,
 		&m.TimeoutS, &m.Paused, &m.GroupName, &m.Tags, &m.PushToken, &m.CreatedAt, &m.UpdatedAt,
-		&m.ParentID, &m.EscalationPolicyID, &m.ChannelIDs)
+		&m.ParentID, &m.EscalationPolicyID, &m.Regions, &m.Quorum, &m.ChannelIDs)
 	if m.Tags == nil {
 		m.Tags = []string{}
 	}
@@ -42,6 +44,16 @@ func nullIfEmpty(s string) *string {
 	return &s
 }
 
+// regionsOrLocal returns the stored regions and quorum for m: an empty
+// region list means the built-in checker only, and quorum is at least 1.
+func regionsOrLocal(m model.Monitor) ([]string, int) {
+	regions := m.Regions
+	if len(regions) == 0 {
+		regions = []string{model.LocalRegion}
+	}
+	return regions, max(m.Quorum, 1)
+}
+
 func tagsOrEmpty(t []string) []string {
 	if t == nil {
 		return []string{}
@@ -52,15 +64,17 @@ func tagsOrEmpty(t []string) []string {
 // CreateMonitor inserts m (with its channel links) and returns the stored row.
 func (s *Store) CreateMonitor(ctx context.Context, m model.Monitor) (model.Monitor, error) {
 	var out model.Monitor
+	regions, quorum := regionsOrLocal(m)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		var id int64
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO upsera.monitors (team_id, name, type, config, interval_s, retry_interval_s, retries, timeout_s,
-				paused, group_name, tags, push_token, parent_id, escalation_policy_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+				paused, group_name, tags, push_token, parent_id, escalation_policy_id, regions, quorum)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 			RETURNING id`,
 			m.TeamID, m.Name, m.Type, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
 			m.Paused, m.GroupName, tagsOrEmpty(m.Tags), nullIfEmpty(m.PushToken), m.ParentID, m.EscalationPolicyID,
+			regions, quorum,
 		).Scan(&id); err != nil {
 			return err
 		}
@@ -73,14 +87,15 @@ func (s *Store) CreateMonitor(ctx context.Context, m model.Monitor) (model.Monit
 // m.ID in m.TeamID. The type and push token are immutable.
 func (s *Store) UpdateMonitor(ctx context.Context, m model.Monitor) (model.Monitor, error) {
 	var out model.Monitor
+	regions, quorum := regionsOrLocal(m)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
 			UPDATE upsera.monitors SET name = $3, config = $4, interval_s = $5, retry_interval_s = $6, retries = $7,
 				timeout_s = $8, paused = $9, group_name = $10, tags = $11, parent_id = $12,
-				escalation_policy_id = $13, updated_at = now()
+				escalation_policy_id = $13, regions = $14, quorum = $15, updated_at = now()
 			WHERE team_id = $1 AND id = $2`,
 			m.TeamID, m.ID, m.Name, m.Config, m.IntervalS, m.RetryIntervalS, m.Retries, m.TimeoutS,
-			m.Paused, m.GroupName, tagsOrEmpty(m.Tags), m.ParentID, m.EscalationPolicyID)
+			m.Paused, m.GroupName, tagsOrEmpty(m.Tags), m.ParentID, m.EscalationPolicyID, regions, quorum)
 		if err != nil {
 			return err
 		}
@@ -211,15 +226,25 @@ func (s *Store) UpsertMonitorStates(ctx context.Context, states []model.MonitorS
 	}
 	b := &pgx.Batch{}
 	for _, st := range states {
+		regions := st.Regions
+		if regions == nil {
+			regions = map[string]model.RegionState{} // jsonb NOT NULL: store {}, not null
+		}
+		regionsJSON, err := json.Marshal(regions)
+		if err != nil {
+			return err
+		}
 		b.Queue(`
 			INSERT INTO upsera.monitor_state (monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at,
-				flap_count, updated_at)
-			SELECT $1, $2, $3, $4, $5, $6, $7, now()
+				flap_count, regions, updated_at)
+			SELECT $1, $2, $3, $4, $5, $6, $7, $8, now()
 			WHERE EXISTS (SELECT 1 FROM upsera.monitors WHERE id = $1)
 			ON CONFLICT (monitor_id) DO UPDATE SET status = EXCLUDED.status, since = EXCLUDED.since,
 				last_check_at = EXCLUDED.last_check_at, consecutive_failures = EXCLUDED.consecutive_failures,
-				tls_expires_at = EXCLUDED.tls_expires_at, flap_count = EXCLUDED.flap_count, updated_at = now()`,
-			st.MonitorID, int16(st.Status), st.Since, st.LastCheckAt, st.ConsecutiveFailures, st.TLSExpiresAt, st.FlapCount)
+				tls_expires_at = EXCLUDED.tls_expires_at, flap_count = EXCLUDED.flap_count,
+				regions = EXCLUDED.regions, updated_at = now()`,
+			st.MonitorID, int16(st.Status), st.Since, st.LastCheckAt, st.ConsecutiveFailures, st.TLSExpiresAt, st.FlapCount,
+			regionsJSON)
 	}
 	return s.pool.SendBatch(ctx, b).Close()
 }
@@ -227,7 +252,7 @@ func (s *Store) UpsertMonitorStates(ctx context.Context, states []model.MonitorS
 // ListMonitorStates returns the persisted state of every monitor.
 func (s *Store) ListMonitorStates(ctx context.Context) ([]model.MonitorState, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at, flap_count
+		SELECT monitor_id, status, since, last_check_at, consecutive_failures, tls_expires_at, flap_count, regions
 		FROM upsera.monitor_state`)
 	if err != nil {
 		return nil, err
@@ -235,7 +260,10 @@ func (s *Store) ListMonitorStates(ctx context.Context) ([]model.MonitorState, er
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (model.MonitorState, error) {
 		var st model.MonitorState
 		err := r.Scan(&st.MonitorID, &st.Status, &st.Since, &st.LastCheckAt, &st.ConsecutiveFailures, &st.TLSExpiresAt,
-			&st.FlapCount)
+			&st.FlapCount, &st.Regions)
+		if len(st.Regions) == 0 {
+			st.Regions = nil
+		}
 		return st, err
 	})
 }

@@ -14,8 +14,9 @@ Phase 3 (dashboard) adds a browser dashboard embedded in the server binary, with
 over Server-Sent Events. Phase 4 adds Docker container monitoring through a socket proxy.
 Phase 5 adds public status pages at `/status/<slug>` (optionally on a custom domain), incidents
 auto-drafted from outages, and email, webhook and RSS subscribers. Subscriber email needs the
-instance SMTP server (Administration → settings). Packaging adds an optional Caddy HTTPS profile,
-Prometheus `/metrics` and backup notes.
+instance SMTP server (Administration → settings). Phase 6 adds [multi-location probes](#multi-location-probes):
+remote `upsera-probe` agents, per-monitor regions with a quorum, and a "probe silent" alert. Packaging adds
+an optional Caddy HTTPS profile, Prometheus `/metrics` and backup notes.
 
 ## Run with Docker Compose
 
@@ -119,6 +120,76 @@ scrape_configs:
 
 Labels: `monitor_id`, `monitor`, `type`, `group`.
 
+## Multi-location probes
+
+By default every check runs on the server itself (the built-in `local` region). To check from other
+places, run `upsera-probe` on a VPS in each location. A probe needs no open ports: it polls the server
+over HTTPS for the monitors assigned to its region, runs the checks, and pushes the results back. A
+monitor can then select several regions and a quorum, so one probe's bad network does not page you.
+
+**Add a probe**
+
+1. In the dashboard open Administration → Probes (instance admin only) and create a probe with a
+   name and a region (lowercase letters, digits and `-`, for example `sg-1`; `local` is reserved).
+2. Copy the registration token (`upr_...`). It is shown once, is valid for 24 hours and works once.
+3. On the remote host:
+
+```sh
+docker run -d --restart unless-stopped --name upsera-probe \
+  -v upsera-probe:/data \
+  -e SERVER_URL=https://status.example.com \
+  -e PROBE_TOKEN=upr_xxxxxxxx \
+  upsera/upsera-probe:latest
+```
+
+On first start the probe exchanges the token for a long-lived credential (`upp_...`) and keeps it in
+`/data/credential` (mode 0600), so keep `/data` on a volume; after that `PROBE_TOKEN` is ignored.
+The region comes from the probe row on the server, so there is no `REGION` variable. Build the image
+yourself with `make docker-build-probe` (`docker build --target probe`) or the binary with `make probe`.
+To rotate or revoke a probe's credential, issue a new registration token for it (the old credential
+stops working at once) or delete the probe. A region still used by a monitor cannot be deleted. Deleting a
+probe also deletes the heartbeats it reported, so that region's per-region latency history is gone (daily
+uptime figures that were already rolled up stay).
+
+**Probe settings** (`upsera-probe`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SERVER_URL` | required | Base URL of the Upsera server. |
+| `PROBE_TOKEN` | empty | One-time registration token; only needed on the first start. |
+| `DATA_DIR` | `/data` | Where the credential is stored (the image sets `/data`). |
+| `BUFFER_SIZE` | `10000` | Results kept in memory while the server is unreachable; the oldest are dropped first. |
+| `MAX_CONCURRENT_CHECKS` | `50` | Checks running at once. |
+| `ALLOW_INSECURE_HTTP` | unset | Must be `1` to use an `http://` `SERVER_URL`. Without it only HTTPS is accepted, because the credential and monitor configs travel over this connection. |
+| `LOG_LEVEL` | `info` | Logging. |
+
+`upsera-probe version` prints the version. If the server rejects the credential (revoked or deleted),
+the probe logs it and exits non-zero.
+
+**Server setting:** `PROBE_SILENT_AFTER` (default `2m`, min `30s`) is how long a registered probe may go
+unseen before it counts as silent.
+
+**Regions and quorum.** In a monitor's form pick one or more regions and a quorum (default: a majority,
+so 2 of 3). The built-in `local` region is always available. Each region applies the monitor's retries
+on its own results. The monitor is DOWN when at least `quorum` fresh regions are down. A region's result
+is fresh for twice the monitor interval; if fewer than `quorum` fresh regions are reporting, the monitor
+goes PENDING with a `probe silent: 1 of 3 regions reporting (sg-1 silent)` message instead of DOWN, so a
+dead probe never opens a down alert by itself. Latency is charted per region on the monitor page.
+
+**Probe silent alert.** When a registered probe is not heard from for `PROBE_SILENT_AFTER`, each team
+that has an unpaused monitor in that region gets a message on its default channels, and another one when
+the probe reports again. There is no acknowledgement or escalation for it.
+
+**Trust model.** Probes receive the full config of the monitors in their region, including credentials
+placed in headers or basic auth, so run probes only on hosts you trust. A probe credential is separate
+from API tokens and cannot be used for anything but the probe endpoints. To revoke a compromised probe,
+delete it or issue a new token, and rotate the credentials in those monitors if the host was exposed.
+The `block_private_targets` instance setting also applies to probes.
+
+**Things to know.** Each check from each region writes its own heartbeat row, so a monitor with three
+regions stores three times the heartbeats (see `HEARTBEAT_RETENTION_DAYS`). Push and Docker monitors
+run only on the server, and remote regions are limited to HTTP, keyword, TCP, ping and DNS monitors.
+
 ## How it compares
 
 | | Upsera | Uptime Kuma | Gatus | Upptime |
@@ -129,7 +200,7 @@ Labels: `monitor_id`, `monitor`, `type`, `group`.
 | Docker container checks | yes | yes | no | no |
 | Public status pages, incidents, subscribers | yes | status pages, incidents | status page | status site |
 | Prometheus `/metrics` | yes, per team | yes | yes | no |
-| Multi-location probes with quorum | planned (Phase 6) | no | no | no |
+| Multi-location probes with quorum | yes | no | no | no |
 | SLOs, monitors as code | planned (Phase 7) | no | config is code | config is code |
 
 Based on each project's documentation at the time of writing; check theirs for the current state.
@@ -153,7 +224,8 @@ Uptime Kuma, Gatus and Upptime are good projects and a better fit when you want 
 | `ROLLUP_INTERVAL` | `1h` | Daily rollup / prune job interval (min 1m). |
 | `MAX_CONCURRENT_CHECKS` | `100` | Checks running at once (min 1). |
 | `INCIDENT_DRAFT_AFTER` | `5m` | How long a monitor on a published status page must stay down before an incident is drafted for review (min 1s). |
-| `TRUSTED_PROXIES` | empty | Comma separated addresses or CIDRs of reverse proxies (for example your Caddy). Only their `X-Forwarded-For` is believed, to tell visitors apart for the public sign-up rate limits; without it every visitor behind a proxy shares one limit. |
+| `TRUSTED_PROXIES` | empty | Comma separated addresses or CIDRs of reverse proxies (for example your Caddy). Only their `X-Forwarded-For` is believed, to tell visitors apart for the public sign-up rate limits and the probe registration limit (10 attempts a minute per client); without it every visitor behind a proxy shares one limit. |
+| `PROBE_SILENT_AFTER` | `2m` | How long a remote probe may go unseen before it is reported silent (min 30s). See [multi-location probes](#multi-location-probes). |
 | `DOCKER_HOST` | empty | Docker socket proxy; its address is always refused as a check target. |
 | `LOG_LEVEL` / `LOG_FORMAT` | `info` / `json` | Logging. |
 
