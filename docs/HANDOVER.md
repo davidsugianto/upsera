@@ -1,7 +1,8 @@
 # Upsera handover: Phases 1–5 done, Phases 6–8 next
 
 Updated 2026-10-11 for the next session. Read this first, then `docs/upsera-build-plan.html`
-(v0.5, the product plan; its "Build phases" section is the roadmap). `docs/handover-phase3.md` is the
+(v0.5, the product plan; its "Build phases" section is the roadmap). `docs/PHASE-CHECKLIST.md` lists
+every task of every phase with its done / partial / not started status. `docs/handover-phase3.md` is the
 detailed snapshot written at the end of the Phase 3 session (dashboard internals, review checklist);
 it is historical and not kept up to date.
 
