@@ -1,4 +1,4 @@
-# Upsera handover: Phases 1–6 done (6 pending commit), Phases 7–8 next
+# Upsera handover: Phases 1–6 done, Phases 7–8 next
 
 Updated 2026-10-11 for the next session. Read this first, then `docs/upsera-build-plan.html`
 (v0.5, the product plan; its "Build phases" section is the roadmap). `docs/PHASE-CHECKLIST.md` lists
@@ -19,7 +19,7 @@ the first push is the first run of the `test` and `web` jobs, and the ping test 
 | 3 Dashboard (+ Dockerfile, compose, Makefile) | `1d16565` | everything manageable from the browser; live SSE updates (`TestPhase3LiveDashboard`) |
 | 4 Docker monitoring | `9b37dc9` | a watched container that stops raises an alert saying why (`TestPhase4DoneWhen`) |
 | 5 Status pages | `a0b8ea2` | two public pages with different monitors render, and a subscriber gets the incident email (`TestPhase5DoneWhen`) |
-| 6 Multi-location probes | pending | firewalling the target from one region fires no alert, from two fires DOWN, and stopping one probe fires "probe silent" not DOWN (phase 6 test in `cmd/upsera`) |
+| 6 Multi-location probes | `ffa41e3` | firewalling the target from one region fires no alert, from two fires DOWN, and stopping one probe fires "probe silent" not DOWN (phase 6 test in `cmd/upsera`) |
 
 - `make check` (gofmt, vet, eslint, tsc, `go test -race ./...`, vitest, web build) exits 0: 17 Go
   packages, 60 web tests. Takes about 3 minutes (testcontainers start Postgres 17 containers).
@@ -62,7 +62,7 @@ zsh does not word-split unquoted variables, BSD `sed -i` needs `''`.
 | `internal/config` | Env config (all vars in README). `TZ` drives rollup days and recurring windows. Phase 5 added `INCIDENT_DRAFT_AFTER`, `TRUSTED_PROXIES`; Phase 6 `PROBE_SILENT_AFTER`. |
 | `internal/model` | Shared types. `Status` int16 (0 down, 1 up, 2 pending, 3 maintenance). `alerting.go`, `docker.go` (DockerHost, DockerTLS), `status.go` (StatusPage, Incident, Subscriber, Delivery, SMTPSettings, enums). |
 | `internal/secret` | `Box`: AES-256-GCM, key = HKDF-SHA256(`APP_SECRET`), ciphertext `v1:` + base64url. Encrypts channel configs, Docker host TLS material and the instance SMTP settings. |
-| `internal/store` | pgx store. **Every table in schema `upsera`, every query schema-qualified.** Migrations `00001`–`00005` (`00005_probes.sql` is new and uncommitted; once committed never edit, add a new one). Files: `monitors`, `alerting`, `dashboard`, `docker`, `status`, `tokens`, `accounts`, `probes` (probe rows, registration tokens and credential hashes, `last_seen_at`). Sentinels: `ErrNotFound`, `ErrConflict`, `ErrInUse`, `ErrSetupDone`, `ErrLastOwner`, `ErrLocalProbe`. `SetSecretBox` must be called before encrypted reads/writes (testutil does it). |
+| `internal/store` | pgx store. **Every table in schema `upsera`, every query schema-qualified.** Migrations `00001`–`00005` (committed — never edit, add a new one). Files: `monitors`, `alerting`, `dashboard`, `docker`, `status`, `tokens`, `accounts`, `probes` (probe rows, registration tokens and credential hashes, `last_seen_at`). Sentinels: `ErrNotFound`, `ErrConflict`, `ErrInUse`, `ErrSetupDone`, `ErrLastOwner`, `ErrLocalProbe`. `SetSecretBox` must be called before encrypted reads/writes (testutil does it). |
 | `internal/checker` | Per-type config validation + checks: http/keyword/tcp/ping/dns/docker; push has a watchdog. |
 | `internal/dockerapi` | Minimal Docker Engine API client over `net/http` (tcp/http(s)/unix, optional TLS; ping, container inspect/list) and the per-host `Registry` the checker reads (no DB on the check path). |
 | `internal/netpolicy` | Outbound target policy checked at dial time; used by checks **and** every notifier and the webhook/SMTP deliveries. `DialDockerHost`/`CheckDockerHost` refuse only unspecified/link-local/metadata (the Docker host itself and private ranges are allowed). Notifier HTTP clients never use `HTTP(S)_PROXY`. |
@@ -153,7 +153,7 @@ Status pages (Phase 5):
 - Instance SMTP (admin only) is stored encrypted in `instance_settings.smtp`; `GET` shows the password as
   `********`, `PUT` omitted = keep, `null` = clear, object = set; `POST /api/admin/settings/smtp/test`.
 
-Multi-location probes (Phase 6; uncommitted at the time of writing):
+Multi-location probes (Phase 6, `ffa41e3`):
 - One probe per region (`probes.region` is UNIQUE); the built-in checker is the probe row `local` and stays a
   region, so a monitor can mix `local` with remote regions. There is no `REGION` env on the agent: the region
   comes from the probe row the credential belongs to.
@@ -220,7 +220,7 @@ image published to a registry (only built locally with `make docker-build-probe`
 - **Phase 8 slice: done** (`deploy/Caddyfile` + compose `https` profile with a fixed `172.29.0.0/24`
   subnet for `TRUSTED_PROXIES`, `GET /metrics` in `internal/api/metrics.go`, `docs/BACKUP.md`, README
   comparison table). Still to do: smoke a real certificate on a public host, README screenshots, docs site.
-- **Phase 6 Multi-location probes: implemented, pending commit** (see §4). `upsera-probe` binary/image, regions +
+- **Phase 6 Multi-location probes: done, `ffa41e3`** (see §4). `upsera-probe` binary/image, regions +
   quorum, per-region latency chart, "probe silent" alert, Administration → Probes.
 - **Phase 7 SLOs and monitors as code:** SLO targets, error budget, burn-rate alerts, DEGRADED detection,
   `upsctl export|diff|apply`.
