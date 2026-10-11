@@ -161,6 +161,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer, accessLogMiddleware(d.Logger))
 	r.Get("/healthz", healthzHandler(d))
+	r.Get("/metrics", metricsHandler(d))
 
 	cfg := huma.DefaultConfig("Upsera API", d.Version)
 	cfg.OpenAPIPath = "/api/openapi"
@@ -189,20 +190,13 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 		p := &principal{}
 
 		if auth := ctx.Header("Authorization"); strings.HasPrefix(auth, bearerPrefix) {
-			secret := strings.TrimPrefix(strings.TrimPrefix(auth, bearerPrefix), tokenPrefix)
-			if raw, err := base64.RawURLEncoding.DecodeString(secret); err == nil {
-				tok, err := d.Store.UseAPIToken(gctx, hashSecret(raw))
-				switch {
-				case err == nil:
-					p.token = &tok
-				case errors.Is(err, store.ErrNotFound):
-					// unknown, expired or revoked token: unauthenticated.
-				default:
-					d.Logger.Error("auth: token lookup failed", "error", err)
-					huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "temporarily unavailable")
-					return
-				}
+			tok, err := lookupBearer(gctx, d, auth)
+			if err != nil {
+				d.Logger.Error("auth: token lookup failed", "error", err)
+				huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "temporarily unavailable")
+				return
 			}
+			p.token = tok // nil: unknown, expired or revoked token, so unauthenticated
 		} else {
 			for _, c := range huma.ReadCookies(ctx) {
 				if c.Name != sessionCookieName {
@@ -440,6 +434,26 @@ func writeAudit(ctx context.Context, d Deps, teamID *int64, act actor, action, t
 	}
 	if err := d.Store.InsertAudit(ctx, entry); err != nil {
 		d.Logger.Error("audit write failed", "action", action, "error", err)
+	}
+}
+
+// lookupBearer resolves an "Authorization: Bearer ups_..." header to an API
+// token (recording its use). It returns nil, nil for a malformed, unknown,
+// expired or revoked token; the error is only for store failures.
+func lookupBearer(ctx context.Context, d Deps, auth string) (*model.APIToken, error) {
+	secret := strings.TrimPrefix(strings.TrimPrefix(auth, bearerPrefix), tokenPrefix)
+	raw, err := base64.RawURLEncoding.DecodeString(secret)
+	if err != nil {
+		return nil, nil
+	}
+	tok, err := d.Store.UseAPIToken(ctx, hashSecret(raw))
+	switch {
+	case err == nil:
+		return &tok, nil
+	case errors.Is(err, store.ErrNotFound):
+		return nil, nil
+	default:
+		return nil, err
 	}
 }
 
