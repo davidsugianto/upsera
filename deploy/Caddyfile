@@ -1,0 +1,35 @@
+# Caddy in front of Upsera (compose profile "https").
+#
+#   docker compose -f deploy/docker-compose.yml --profile local-db --profile https up -d
+#
+# UPSERA_DOMAIN is the dashboard's hostname (set in deploy/.env); Caddy gets a
+# certificate for it automatically. Status pages on custom domains get theirs on
+# demand, but only for domains of published pages: Caddy asks Upsera first, over
+# the internal network.
+{
+	on_demand_tls {
+		ask http://upsera:3080/api/tls-allowed
+	}
+}
+
+(upsera) {
+	# The ask endpoint is for Caddy only; it would otherwise let anyone
+	# enumerate custom domains.
+	@internal path /api/tls-allowed
+	respond @internal 404
+
+	# Caddy sets X-Forwarded-For; Upsera trusts it from TRUSTED_PROXIES only.
+	reverse_proxy upsera:3080
+}
+
+{$UPSERA_DOMAIN} {
+	import upsera
+}
+
+# Any other hostname (custom status page domains).
+https:// {
+	tls {
+		on_demand
+	}
+	import upsera
+}

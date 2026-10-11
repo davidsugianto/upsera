@@ -16,7 +16,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 | 5 | Status pages | done | `a0b8ea2` |
 | 6 | Multi-location probes | not started | — |
 | 7 | SLOs and monitors as code | not started | — |
-| 8 | Packaging and launch | partly done (pulled forward) | `1d16565` |
+| 8 | Packaging and launch | partly done (Docker, Caddy, `/metrics`, backup notes) | `1d16565` + packaging slice |
 
 ---
 
@@ -80,7 +80,7 @@ smoke test at the time. ✔
 - [x] Public page with overall banner, 90-day bars, incident timeline; responses cached 30s
 - [x] Custom domains: page served when the request Host equals `custom_domain`; `GET /api/tls-allowed`
   returns 200 only for published pages (admin-only to set)
-- [~] The Caddy profile that issues certificates with on-demand TLS — belongs to Phase 8, not written
+- [x] The Caddy profile that issues certificates with on-demand TLS (Phase 8 slice, `deploy/Caddyfile`)
 - [x] Incidents auto-drafted when a listed monitor is down for `INCIDENT_DRAFT_AFTER` (default 5 min), published
   after review
 - [x] Subscribers by email (instance SMTP, double opt-in), webhook (editor-added) and RSS
@@ -124,12 +124,14 @@ and stopping one probe fires "probe silent", not DOWN.
   `net.ipv4.ping_group_range`)
 - [x] `deploy/docker-compose.yml` with the `local-db` profile, `.env.example` (`make env` generates `.env`),
   container healthcheck (`/upsera healthcheck`)
-- [ ] Backup notes (database + `APP_SECRET`)
-- [ ] Optional Caddy profile for HTTPS (`deploy/Caddyfile`, `on_demand_tls ask → /api/tls-allowed`,
-  `TRUSTED_PROXIES`)
-- [ ] `/metrics` Prometheus endpoint (bearer API token with read scope, only the token's team's monitors)
+- [x] Backup notes (database + `APP_SECRET`): `docs/BACKUP.md`
+- [x] Optional Caddy profile for HTTPS (`deploy/Caddyfile`, `on_demand_tls ask → /api/tls-allowed`,
+  `TRUSTED_PROXIES` on a fixed compose subnet). Smoke-tested locally with Caddy's local CA; a real
+  Let's Encrypt certificate is not verified
+- [x] `/metrics` Prometheus endpoint (bearer API token, any scope, only the token's team's monitors)
 - [ ] Docs site
-- [ ] README with a comparison table and screenshots (README exists, without these)
+- [~] README with a comparison table and screenshots — table done (competitor claims written from memory,
+  worth a check before launch); screenshots missing
 - [ ] Fresh server to working dashboard in under 5 minutes, verified on a clean host
 
 **Done when:** fresh server to working dashboard in under 5 minutes.
@@ -141,8 +143,8 @@ and stopping one probe fires "probe silent", not DOWN.
 - [ ] Push and watch the first GitHub CI run (`test` and `web` jobs); fix anything it finds (the ping test
   depends on `net.ipv4.ping_group_range`)
 - [ ] Decide the licence before accepting outside contributions: MIT (current) or AGPL-3.0
-- [ ] Public v0.x release after Phase 5 (plan decision 6): needs the Phase 8 items above that make a
-  release usable (Caddy profile, `/metrics`, README comparison table and screenshots, backup notes)
+- [ ] Public v0.x release after Phase 5 (plan decision 6): the Phase 8 slice is in; still needs README
+  screenshots and a real-host check of the Caddy certificate path
 - [ ] Reserve the GitHub org, domain and Docker Hub namespace (plan decision 7)
 - [ ] v1.0 after Phase 8
 - [ ] Open review items to schedule: see `HANDOVER.md` §5 (auto-incident lifecycle, retention, claim batch,

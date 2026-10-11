@@ -14,7 +14,8 @@ Phase 3 (dashboard) adds a browser dashboard embedded in the server binary, with
 over Server-Sent Events. Phase 4 adds Docker container monitoring through a socket proxy.
 Phase 5 adds public status pages at `/status/<slug>` (optionally on a custom domain), incidents
 auto-drafted from outages, and email, webhook and RSS subscribers. Subscriber email needs the
-instance SMTP server (Administration → settings).
+instance SMTP server (Administration → settings). Packaging adds an optional Caddy HTTPS profile,
+Prometheus `/metrics` and backup notes.
 
 ## Run with Docker Compose
 
@@ -33,6 +34,31 @@ Supabase instead, set its `DATABASE_URL` in `deploy/.env` (see `deploy/.env.exam
 To start over with an empty database: `docker compose -f deploy/docker-compose.yml --profile local-db down -v`.
 
 `make help` lists every task (build, test, lint, gen-api, ...).
+
+### HTTPS with Caddy
+
+The optional `https` profile puts Caddy in front of Upsera on ports 80 and 443 and gets certificates
+automatically. Point your domain's DNS at the server, then in `deploy/.env`:
+
+```sh
+UPSERA_DOMAIN=status.example.com
+BASE_URL=https://status.example.com
+TRUSTED_PROXIES=172.29.0.0/24     # the compose network Caddy runs in
+```
+
+```sh
+docker compose -f deploy/docker-compose.yml --profile local-db --profile https up -d --build
+```
+
+`deploy/Caddyfile` serves the dashboard on `UPSERA_DOMAIN` and, for
+[status pages on custom domains](#status-pages-on-a-custom-domain), requests a certificate on demand
+only for domains of published pages (Caddy asks `/api/tls-allowed` over the internal network; the
+public site returns 404 for that path). Without `UPSERA_DOMAIN` the profile serves `localhost` with
+Caddy's local CA, which is handy to try it. Certificates live in the `caddy_data` volume.
+
+### Backups
+
+Back up the database **and** `APP_SECRET` together; see [`docs/BACKUP.md`](docs/BACKUP.md).
 
 ## Run locally without Docker
 
@@ -70,6 +96,45 @@ Cookie sessions must send the returned `csrf_token` as `X-CSRF-Token` on writes.
 create a team token (`POST /api/teams/{id}/tokens`, scope `read` or `write`) and send
 `Authorization: Bearer ups_...`.
 
+## Prometheus metrics
+
+`GET /metrics` exposes the monitors of one team in the Prometheus text format. Authenticate with a team
+API token (`read` scope is enough; cookies are not accepted), so each team scrapes only its own monitors:
+
+```yaml
+scrape_configs:
+  - job_name: upsera
+    scheme: https
+    authorization: { credentials: ups_xxxxxxxx }   # or credentials_file
+    static_configs: [{ targets: ["status.example.com"] }]
+```
+
+| Metric (gauge) | Meaning |
+|---|---|
+| `upsera_monitor_up` | `1` up or pending, `0` down. Absent while paused or not yet checked. |
+| `upsera_monitor_status` | `0` down, `1` up, `2` pending, `3` maintenance. |
+| `upsera_monitor_response_ms` | Latency of the most recent check. |
+| `upsera_monitor_paused` | `1` when paused. |
+| `upsera_monitor_cert_expiry_seconds` | Seconds until the TLS certificate expires, for HTTPS monitors. |
+
+Labels: `monitor_id`, `monitor`, `type`, `group`.
+
+## How it compares
+
+| | Upsera | Uptime Kuma | Gatus | Upptime |
+|---|---|---|---|---|
+| Runs as | one server + Postgres | one server (SQLite / MariaDB) | one binary, YAML config | GitHub Actions + GitHub Pages |
+| Teams, roles, API tokens | yes | no | no | no |
+| Add and edit monitors in a UI | yes | yes | no (edit the YAML) | no (edit the repo) |
+| Docker container checks | yes | yes | no | no |
+| Public status pages, incidents, subscribers | yes | status pages, incidents | status page | status site |
+| Prometheus `/metrics` | yes, per team | yes | yes | no |
+| Multi-location probes with quorum | planned (Phase 6) | no | no | no |
+| SLOs, monitors as code | planned (Phase 7) | no | config is code | config is code |
+
+Based on each project's documentation at the time of writing; check theirs for the current state.
+Uptime Kuma, Gatus and Upptime are good projects and a better fit when you want something smaller.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -102,7 +167,7 @@ the domain's DNS at the server and put a TLS-terminating proxy in front of it, f
 original `Host` header and listing the proxy in `TRUSTED_PROXIES`. With Caddy, `on_demand_tls { ask
 http://upsera:3080/api/tls-allowed }` makes it request certificates only for published pages'
 domains. Subscriber emails link to `https://<domain>/...` for such pages, which therefore needs TLS to
-work. The packaged Caddy profile comes in a later phase.
+work. The [`https` compose profile](#https-with-caddy) does this.
 
 ## Development
 

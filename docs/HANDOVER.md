@@ -27,8 +27,8 @@ the first push is the first run of the `test` and `web` jobs, and the ping test 
 - Frontend in `web/`: React 19, Vite 8, TypeScript 5.9 (forced by `openapi-typescript` and
   `typescript-eslint`), Tailwind 4, react-router 8, TanStack Query 5, openapi-fetch, uPlot. It is
   embedded into the binary with `go:embed` (`web/web.go`).
-- Not done yet: Phase 6 (multi-location probes), 7 (SLOs, `upsctl`), 8 (packaging: Caddy profile,
-  docs site). The Dockerfile, `deploy/docker-compose.yml` and `Makefile` came forward from Phase 8.
+- Not done yet: Phase 6 (multi-location probes), 7 (SLOs, `upsctl`), 8 (docs site, README screenshots,
+  clean-host timing; the Caddy profile, `/metrics` and backup notes are in). The Dockerfile, `deploy/docker-compose.yml` and `Makefile` came forward from Phase 8.
 
 ## 2. Running things
 
@@ -176,9 +176,9 @@ upgrading an existing database to migration 4.
 
 ## 6. Next phases (from the plan)
 
-- **Phase 8 slice (suggested before more features):** `deploy/Caddyfile` + compose `https` profile
-  (`on_demand_tls { ask http://upsera:3080/api/tls-allowed }`, set `TRUSTED_PROXIES` to the Caddy address),
-  `/metrics`, README comparison table; then smoke a real certificate path.
+- **Phase 8 slice: done** (`deploy/Caddyfile` + compose `https` profile with a fixed `172.29.0.0/24`
+  subnet for `TRUSTED_PROXIES`, `GET /metrics` in `internal/api/metrics.go`, `docs/BACKUP.md`, README
+  comparison table). Still to do: smoke a real certificate on a public host, README screenshots, docs site.
 - **Phase 6 Multi-location probes:** `upsera-probe` binary/image registering with a one-time token, pulling
   assignments and pushing results over HTTPS with local buffering; per-monitor regions + quorum; per-region
   latency chart; "probe silent" alert. `probe_id` already exists on heartbeats (the built-in checker is probe
