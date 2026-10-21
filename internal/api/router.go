@@ -263,6 +263,7 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	registerAdminRoutes(api, d)
 	registerProbeAdminRoutes(api, d)
 	registerTeamRoutes(api, d)
+	registerTokenInfoRoutes(api, d)
 	registerMonitorRoutes(api, d)
 	registerChannelRoutes(api, d)
 	registerDockerHostRoutes(api, d)
@@ -273,6 +274,8 @@ func newAPI(d Deps) (*chi.Mux, huma.API) {
 	registerAuditRoutes(api, d)
 	registerPushRoutes(api, d)
 	registerDashboardRoutes(api, d)
+	registerSLORoutes(api, d)
+	registerReportRoutes(api, d)
 	registerEventRoutes(api, d)
 	registerProbeProtocol(r, d)
 

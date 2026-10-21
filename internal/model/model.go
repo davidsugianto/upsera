@@ -20,6 +20,9 @@ const (
 	StatusUp          Status = 1
 	StatusPending     Status = 2
 	StatusMaintenance Status = 3
+	// StatusDegraded is UP but slow: a region's recent p95 latency is far
+	// above its own baseline. It is notification-only (never an alert).
+	StatusDegraded Status = 4
 )
 
 func (s Status) String() string {
@@ -32,6 +35,8 @@ func (s Status) String() string {
 		return "pending"
 	case StatusMaintenance:
 		return "maintenance"
+	case StatusDegraded:
+		return "degraded"
 	}
 	return fmt.Sprintf("status(%d)", int16(s))
 }
@@ -50,6 +55,8 @@ func (s *Status) UnmarshalText(b []byte) error {
 		*s = StatusPending
 	case "maintenance":
 		*s = StatusMaintenance
+	case "degraded":
+		*s = StatusDegraded
 	default:
 		return fmt.Errorf("unknown status %q", b)
 	}
@@ -64,6 +71,7 @@ func (Status) Schema(huma.Registry) *huma.Schema {
 		Type: huma.TypeString,
 		Enum: []any{
 			StatusDown.String(), StatusUp.String(), StatusPending.String(), StatusMaintenance.String(),
+			StatusDegraded.String(),
 		},
 	}
 }
@@ -160,7 +168,7 @@ type Heartbeat struct {
 }
 
 // UptimeCount is an uptime tally: Checks excludes maintenance heartbeats,
-// Up counts up and pending ones (the same rules as uptime_daily).
+// Up counts up, degraded and pending ones (the same rules as uptime_daily).
 type UptimeCount struct{ Checks, Up int }
 
 // StatusChange is a heartbeat whose status differs from the previous one.
@@ -193,7 +201,8 @@ type MonitorState struct {
 	LastCheckAt         time.Time
 	ConsecutiveFailures int
 	TLSExpiresAt        *time.Time
-	// FlapCount is the number of DOWN/UP state changes in the last hour.
+	// FlapCount is the number of DOWN/UP state changes in the last hour
+	// (DEGRADED counts as UP; UP <-> DEGRADED is not a change).
 	FlapCount int
 	// Regions is the live per-region state of a monitor checked from remote
 	// regions (nil for local-only monitors).

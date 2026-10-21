@@ -7,13 +7,17 @@ import {
   useMonitor,
   useMonitors,
   usePolicies,
+  useDeleteSLO,
   useRegions,
   useSaveMonitor,
+  useSaveSLO,
+  useSLO,
 } from '../../api/queries'
-import type { MonitorType } from '../../api/types'
+import type { MonitorType, SLO, SLOInput } from '../../api/types'
 import { Checkbox, KeyValueEditor, MultiCheck, NumberField, Select, TagInput, TextField } from '../../components/Fields'
-import { ErrorMessage, Loading, PageHeader, fieldError } from '../../components/ui'
+import { ErrorMessage, Loading, PageHeader, errorText, fieldError } from '../../components/ui'
 import { Link } from 'react-router'
+import { useRole } from '../../hooks/useRole'
 import { useNumberParam, useTeamId } from '../../hooks/useTeamId'
 import {
   canRunRemotely,
@@ -33,32 +37,92 @@ import {
 
 const noneOption = { value: '', label: 'None' }
 
+/** SLOForm is the monitor form's service level objective section. */
+export type SLOForm = { enabled: boolean; target: number; window_days: number; fast_burn: number; slow_burn: number }
+
+/** defaultSLOForm is off, with the server's defaults ready for when it is turned on. */
+export function defaultSLOForm(): SLOForm {
+  return { enabled: false, target: 99.9, window_days: 30, fast_burn: 14.4, slow_burn: 6 }
+}
+
+/** sloToForm loads an existing SLO into the form (null: the monitor has none). */
+export function sloToForm(slo: SLO | null | undefined): SLOForm {
+  if (!slo) return defaultSLOForm()
+  return { enabled: true, target: slo.target, window_days: slo.window_days, fast_burn: slo.fast_burn, slow_burn: slo.slow_burn }
+}
+
+export function sloFormToInput(f: SLOForm): SLOInput {
+  return { target: f.target, window_days: f.window_days, fast_burn: f.fast_burn, slow_burn: f.slow_burn }
+}
+
+/**
+ * validateSLOForm mirrors the server's rules: 0 < target < 100 with at most 3
+ * decimals, a whole window of 7 to 90 days, and 1 <= slow <= fast <= 1000.
+ * Errors are keyed "slo.<field>"; a disabled SLO is never invalid.
+ */
+export function validateSLOForm(f: SLOForm): Record<string, string> {
+  const e: Record<string, string> = {}
+  if (!f.enabled) return e
+  if (!(f.target > 0 && f.target < 100)) e['slo.target'] = 'Must be above 0 and below 100.'
+  else if (Math.abs(f.target * 1000 - Math.round(f.target * 1000)) > 1e-6) e['slo.target'] = 'At most 3 decimals.'
+  if (!Number.isInteger(f.window_days) || f.window_days < 7 || f.window_days > 90)
+    e['slo.window_days'] = 'A whole number of days from 7 to 90.'
+  if (!(f.fast_burn >= 1 && f.fast_burn <= 1000)) e['slo.fast_burn'] = 'From 1 to 1000.'
+  if (!(f.slow_burn >= 1 && f.slow_burn <= 1000)) e['slo.slow_burn'] = 'From 1 to 1000.'
+  else if (f.fast_burn >= 1 && f.slow_burn > f.fast_burn) e['slo.slow_burn'] = 'Must not be above the fast threshold.'
+  return e
+}
+
 /** MonitorFormPage handles both monitor creation and editing. */
 export function MonitorFormPage() {
   const t = useTeamId()
   const editingId = useNumberParam('monitorId')
   const isEdit = !Number.isNaN(editingId)
   const monitorQuery = useMonitor(t, editingId, { enabled: isEdit })
+  const sloQuery = useSLO(t, editingId, { enabled: isEdit })
 
-  if (!isEdit) return <MonitorEditor key="new" initial={defaultMonitorForm('http')} />
-  if (monitorQuery.isPending) return <Loading />
+  if (!isEdit) return <MonitorEditor key="new" initial={defaultMonitorForm('http')} initialSLO={defaultSLOForm()} />
+  if (monitorQuery.isPending || sloQuery.isPending) return <Loading />
   if (monitorQuery.error) return <ErrorMessage error={monitorQuery.error} />
+  if (sloQuery.error) return <ErrorMessage error={sloQuery.error} />
   // Keyed by id so navigating between monitors starts from fresh state;
   // later cache updates (live events) don't overwrite the user's edits.
-  return <MonitorEditor key={editingId} editingId={editingId} initial={monitorToForm(monitorQuery.data)} />
+  return (
+    <MonitorEditor
+      key={editingId}
+      editingId={editingId}
+      initial={monitorToForm(monitorQuery.data)}
+      initialSLO={sloToForm(sloQuery.data?.slo)}
+    />
+  )
 }
 
-function MonitorEditor({ initial, editingId }: { initial: MonitorForm; editingId?: number }) {
+function MonitorEditor({
+  initial,
+  initialSLO,
+  editingId,
+}: {
+  initial: MonitorForm
+  initialSLO: SLOForm
+  editingId?: number
+}) {
   const t = useTeamId()
   const navigate = useNavigate()
+  const { can } = useRole(t)
   const isEdit = editingId !== undefined
   const monitors = useMonitors(t)
   const channels = useChannels(t)
   const policies = usePolicies(t)
   const save = useSaveMonitor(t)
+  const saveSLO = useSaveSLO(t)
+  const deleteSLO = useDeleteSLO(t)
 
   const [form, setForm] = useState<MonitorForm>(initial)
+  const [slo, setSLO] = useState<SLOForm>(initialSLO)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // savedId is the monitor created by an earlier submit whose SLO step
+  // failed: the next submit updates it instead of creating another.
+  const [savedId, setSavedId] = useState<number | undefined>(editingId)
 
   const parentOptions = [
     noneOption,
@@ -90,16 +154,32 @@ function MonitorEditor({ initial, editingId }: { initial: MonitorForm; editingId
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const localErrors = validateMonitorForm(form)
+    const localErrors = { ...validateMonitorForm(form), ...validateSLOForm(slo) }
     setErrors(localErrors)
     if (Object.keys(localErrors).length > 0) return
+    saveSLO.reset()
+    deleteSLO.reset()
     save.mutate(
-      { id: isEdit ? editingId : undefined, body: formToBody(form) },
-      { onSuccess: (m) => navigate(`/t/${t}/monitors/${m.id}`) },
+      { id: savedId, body: formToBody(form) },
+      {
+        onSuccess: async (m) => {
+          setSavedId(m.id)
+          try {
+            // The SLO is saved after its monitor (a new monitor has no id before).
+            if (slo.enabled) await saveSLO.mutateAsync({ id: m.id, body: sloFormToInput(slo) })
+            else if (initialSLO.enabled) await deleteSLO.mutateAsync(m.id)
+          } catch {
+            return // shown below; the monitor itself is saved
+          }
+          navigate(`/t/${t}/monitors/${m.id}`)
+        },
+      },
     )
   }
 
   const err = (name: string) => fieldError(save.error, name, errors)
+  const sloErr = (name: string) => fieldError(saveSLO.error, name, errors) ?? errors[`slo.${name}`]
+  const busy = save.isPending || saveSLO.isPending || deleteSLO.isPending
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -189,11 +269,18 @@ function MonitorEditor({ initial, editingId }: { initial: MonitorForm; editingId
 
         <Checkbox label="Paused" checked={form.paused} onChange={(v) => set('paused', v)} />
 
+        <SLOFields slo={slo} setSLO={setSLO} err={sloErr} readOnly={!can('editor')} />
+        {(saveSLO.error || deleteSLO.error) && (
+          <p role="alert" className="rounded-md border border-down/40 bg-down/10 px-3 py-2 text-sm text-down">
+            The monitor was saved, but its service level objective was not: {errorText(saveSLO.error ?? deleteSLO.error)}
+          </p>
+        )}
+
         <div className="flex justify-end gap-2">
           <button type="button" className="btn" onClick={() => navigate(-1)}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary" disabled={save.isPending}>
+          <button type="submit" className="btn-primary" disabled={busy}>
             {isEdit ? 'Save' : 'Create'}
           </button>
         </div>
@@ -540,5 +627,86 @@ function RegionFields({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * SLOFields edits the monitor's service level objective: on/off, target and
+ * window, and the burn-rate thresholds under "Advanced". Read-only for viewers.
+ */
+function SLOFields({
+  slo,
+  setSLO,
+  err,
+  readOnly,
+}: {
+  slo: SLOForm
+  setSLO: (update: (f: SLOForm) => SLOForm) => void
+  err: (name: string) => string | undefined
+  readOnly: boolean
+}) {
+  const set = <K extends keyof SLOForm>(key: K, value: SLOForm[K]) => setSLO((f) => ({ ...f, [key]: value }))
+  return (
+    <fieldset className="space-y-4 border-t border-line pt-5" disabled={readOnly}>
+      <legend className="sr-only">Service level objective</legend>
+      <div className="text-sm font-medium" aria-hidden="true">
+        Service level objective
+      </div>
+      <Checkbox
+        label="Track an SLO for this monitor"
+        checked={slo.enabled}
+        onChange={(v) => set('enabled', v)}
+        help="Counts up, pending and degraded checks as good, and notifies when the error budget burns too fast. It never opens an alert."
+      />
+      {slo.enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <NumberField
+              label="Target (%)"
+              value={slo.target}
+              onChange={(v) => set('target', v)}
+              min={0}
+              max={100}
+              step="any"
+              error={err('target')}
+              help="e.g. 99.9; at most 3 decimals."
+            />
+            <NumberField
+              label="Window (days)"
+              value={slo.window_days}
+              onChange={(v) => set('window_days', v)}
+              min={7}
+              max={90}
+              error={err('window_days')}
+            />
+          </div>
+          <details className="rounded-md border border-line px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <NumberField
+                label="Fast burn threshold"
+                value={slo.fast_burn}
+                onChange={(v) => set('fast_burn', v)}
+                min={1}
+                max={1000}
+                step="any"
+                error={err('fast_burn')}
+                help="Over the last 1h and 5m."
+              />
+              <NumberField
+                label="Slow burn threshold"
+                value={slo.slow_burn}
+                onChange={(v) => set('slow_burn', v)}
+                min={1}
+                max={1000}
+                step="any"
+                error={err('slow_burn')}
+                help="Over the last 6h and 30m; at most the fast threshold."
+              />
+            </div>
+          </details>
+        </>
+      )}
+    </fieldset>
   )
 }

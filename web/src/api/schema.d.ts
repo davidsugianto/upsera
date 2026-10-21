@@ -625,6 +625,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/teams/{teamID}/monitors/{monitorID}/slo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID monitors by monitor ID slo */
+        get: operations["get-api-teams-by-team-id-monitors-by-monitor-id-slo"];
+        /** Put API teams by team ID monitors by monitor ID slo */
+        put: operations["put-api-teams-by-team-id-monitors-by-monitor-id-slo"];
+        post?: never;
+        /** Delete API teams by team ID monitors by monitor ID slo */
+        delete: operations["delete-api-teams-by-team-id-monitors-by-monitor-id-slo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/teams/{teamID}/monitors/{monitorID}/uptime": {
         parameters: {
             query?: never;
@@ -668,6 +687,40 @@ export interface paths {
         };
         /** Get API teams by team ID notification log */
         get: operations["get-api-teams-by-team-id-notification-log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/reports/sla": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID reports SLA */
+        get: operations["get-api-teams-by-team-id-reports-sla"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamID}/slos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API teams by team ID slos */
+        get: operations["get-api-teams-by-team-id-slos"];
         put?: never;
         post?: never;
         delete?: never;
@@ -848,6 +901,23 @@ export interface paths {
         post?: never;
         /** Delete API teams by team ID tokens by token ID */
         delete: operations["delete-api-teams-by-team-id-tokens-by-token-id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get API token */
+        get: operations["get-api-token"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1161,7 +1231,7 @@ export interface components {
             /** @description Region of the probe that ran the check; empty when the probe is unknown. */
             region: string;
             /** @enum {string} */
-            status: "down" | "up" | "pending" | "maintenance";
+            status: "down" | "up" | "pending" | "maintenance" | "degraded";
             /** Format: date-time */
             time: string;
         };
@@ -1386,6 +1456,15 @@ export interface components {
              */
             readonly $schema?: string;
             regions: components["schemas"]["RegionBody"][] | null;
+        };
+        ListSLOsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/ListSLOsOutputBody.json
+             */
+            readonly $schema?: string;
+            slos: components["schemas"]["SloListItem"][] | null;
         };
         ListStatusPagesOutputBody: {
             /**
@@ -1641,7 +1720,7 @@ export interface components {
             /** Format: date-time */
             since: string;
             /** @enum {string} */
-            status: "down" | "up" | "pending" | "maintenance";
+            status: "down" | "up" | "pending" | "maintenance" | "degraded";
             /** Format: date-time */
             tls_expires_at: string | null;
         };
@@ -1656,7 +1735,7 @@ export interface components {
             dedupe_key: string;
             error: string;
             /** @enum {string} */
-            event: "down" | "recovered" | "flapping" | "cert_expiry" | "test" | "probe_silent" | "probe_recovered";
+            event: "down" | "recovered" | "flapping" | "cert_expiry" | "test" | "probe_silent" | "probe_recovered" | "degraded" | "latency_recovered" | "slo_burn" | "slo_burn_recovered";
             /** Format: int64 */
             id: number;
             /** Format: int64 */
@@ -1748,7 +1827,7 @@ export interface components {
             latency_ms: number;
             message: string;
             /** @enum {string} */
-            status: "down" | "up" | "pending" | "maintenance";
+            status: "down" | "up" | "pending" | "maintenance" | "degraded";
         };
         SettingsBody: {
             /**
@@ -1784,6 +1863,181 @@ export interface components {
             readonly $schema?: string;
             needed: boolean;
         };
+        SlaReportOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SlaReportOutputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: date */
+            from: string;
+            month: string;
+            /** @description True for the current month (it stops at today). */
+            partial: boolean;
+            rows: components["schemas"]["SlaRowBody"][] | null;
+            /** Format: date */
+            to: string;
+        };
+        SlaRowBody: {
+            /**
+             * Format: int64
+             * @description Alerts whose incident started in the month.
+             */
+            alerts: number;
+            /**
+             * Format: int64
+             * @description Checks in the month, maintenance excluded.
+             */
+            checks: number;
+            /**
+             * Format: int64
+             * @description Seconds of the month covered by the monitor's alerts (an open alert counts up to now).
+             */
+            downtime_s: number;
+            /** Format: int64 */
+            monitor_id: number;
+            monitor_name: string;
+            /**
+             * Format: int64
+             * @description Approximation: the checks-weighted average of the daily p95 latencies over the days with checks (0 without any).
+             */
+            p95_latency_ms: number;
+            /** @description uptime_pct >= slo_target; absent without an SLO or without checks. */
+            slo_met?: boolean;
+            /**
+             * Format: double
+             * @description The monitor's SLO target; absent without an SLO.
+             */
+            slo_target?: number;
+            /**
+             * Format: double
+             * @description Up, pending and degraded checks / checks × 100; absent without checks.
+             */
+            uptime_pct?: number;
+        };
+        SloBody: {
+            /** Format: double */
+            fast_burn: number;
+            /** Format: int64 */
+            monitor_id: number;
+            /** Format: double */
+            slow_burn: number;
+            /** Format: double */
+            target: number;
+            /** Format: int64 */
+            window_days: number;
+        };
+        SloInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SloInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: double
+             * @description Burn-rate threshold of the fast (1h/5m) alert.
+             * @default 14.4
+             */
+            fast_burn: number;
+            /**
+             * Format: double
+             * @description Burn-rate threshold of the slow (6h/30m) alert; at most fast_burn.
+             * @default 6
+             */
+            slow_burn: number;
+            /**
+             * Format: double
+             * @description Percent of valid checks that must be good, at most 3 decimals (e.g. 99.9).
+             */
+            target: number;
+            /**
+             * Format: int64
+             * @description Rolling window in calendar days.
+             * @default 30
+             */
+            window_days: number;
+        };
+        SloListItem: {
+            /** Format: double */
+            fast_burn: number;
+            /** Format: int64 */
+            monitor_id: number;
+            monitor_name: string;
+            /** Format: double */
+            slow_burn: number;
+            status: components["schemas"]["SloStatusBody"];
+            /** Format: double */
+            target: number;
+            /** Format: int64 */
+            window_days: number;
+        };
+        SloOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/SloOutputBody.json
+             */
+            readonly $schema?: string;
+            series: components["schemas"]["SloPointBody"][] | null;
+            slo: components["schemas"]["SloBody"];
+            status: components["schemas"]["SloStatusBody"];
+        };
+        SloPointBody: {
+            /**
+             * Format: double
+             * @description Budget consumed over the window up to and including this day (0 before any valid check).
+             */
+            budget_consumed: number;
+            /**
+             * Format: date
+             * @description Calendar day in the server time zone.
+             */
+            day: string;
+            /**
+             * Format: double
+             * @description That day's SLI; absent without valid checks.
+             */
+            sli?: number;
+        };
+        SloStatusBody: {
+            /**
+             * Format: double
+             * @description (1 - sli) / (1 - target/100): 1 = budget exhausted, can exceed 1; absent without data.
+             */
+            budget_consumed?: number;
+            /**
+             * Format: double
+             * @description Error rate of the last hour / (1 - target/100); absent without valid checks in that hour.
+             */
+            burn_rate_1h?: number;
+            /**
+             * Format: double
+             * @description The same over the last 6 hours.
+             */
+            burn_rate_6h?: number;
+            /**
+             * @description Which burn-rate alert is firing; fast wins when both are.
+             * @enum {string}
+             */
+            firing: "none" | "slow" | "fast";
+            /**
+             * Format: int64
+             * @description Up, pending and degraded checks in the window.
+             */
+            good: number;
+            /**
+             * Format: double
+             * @description Good / valid checks in the window; absent without valid checks.
+             */
+            sli?: number;
+            /**
+             * Format: int64
+             * @description Checks in the window, maintenance excluded.
+             */
+            valid: number;
+        };
         SmtpBody: {
             from: string;
             host: string;
@@ -1817,9 +2071,9 @@ export interface components {
              * @description Null for the oldest retained heartbeat.
              * @enum {string|null}
              */
-            previous_status: "down" | "up" | "pending" | "maintenance" | null;
+            previous_status: "down" | "up" | "pending" | "maintenance" | "degraded" | null;
             /** @enum {string} */
-            status: "down" | "up" | "pending" | "maintenance";
+            status: "down" | "up" | "pending" | "maintenance" | "degraded";
             /** Format: date-time */
             time: string;
         };
@@ -1955,6 +2209,20 @@ export interface components {
             name: string;
             /** @enum {string} */
             scope: "read" | "write";
+        };
+        TokenInfoOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/api/schemas/TokenInfoOutputBody.json
+             */
+            readonly $schema?: string;
+            name: string;
+            /** @enum {string} */
+            scope: "read" | "write";
+            /** Format: int64 */
+            team_id: number;
+            team_name: string;
         };
         UpdateMemberInputBody: {
             /**
@@ -3929,6 +4197,104 @@ export interface operations {
             };
         };
     };
+    "get-api-teams-by-team-id-monitors-by-monitor-id-slo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                monitorID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SloOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-api-teams-by-team-id-monitors-by-monitor-id-slo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                monitorID: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SloInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SloOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-api-teams-by-team-id-monitors-by-monitor-id-slo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+                monitorID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-api-teams-by-team-id-monitors-by-monitor-id-uptime": {
         parameters: {
             query?: {
@@ -4016,6 +4382,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListNotificationLogOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-reports-sla": {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM in the server time zone; default the current month. */
+                month?: string;
+            };
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlaReportOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-teams-by-team-id-slos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamID: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSLOsOutputBody"];
                 };
             };
             /** @description Error */
@@ -4582,6 +5013,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-api-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenInfoOutputBody"];
+                };
             };
             /** @description Error */
             default: {

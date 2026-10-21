@@ -29,6 +29,9 @@ import type {
   ProbeRegistration,
   Region,
   Role,
+  SLAReport,
+  SLODetail,
+  SLOInput,
   Settings,
   SettingsUpdate,
   StatusEvent,
@@ -68,6 +71,9 @@ export const keys = {
   adminSettings: ['adminSettings'] as const,
   adminProbes: ['adminProbes'] as const,
   regions: ['regions'] as const,
+  slo: (t: number, id: number) => ['slo', t, id] as const,
+  slaReport: (t: number, month: string) => ['slaReport', t, month] as const,
+  slaReportsAll: (t: number) => ['slaReport', t] as const,
 }
 
 // ---- session ----
@@ -213,6 +219,66 @@ export function useUptimeSummary(t: number, id: number) {
           params: { path: { teamID: t, monitorID: id } },
         }),
       ),
+  })
+}
+
+// ---- SLOs and reports ----
+
+/**
+ * useSLO loads a monitor's SLO with its status and daily series; null when the
+ * monitor has no SLO (the API answers 404). It refreshes like the uptime summary.
+ */
+export function useSLO(t: number, id: number, opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.slo(t, id),
+    queryFn: async (): Promise<SLODetail | null> => {
+      try {
+        return await unwrap(
+          client.GET('/api/teams/{teamID}/monitors/{monitorID}/slo', { params: { path: { teamID: t, monitorID: id } } }),
+        )
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }
+    },
+    enabled: opts.enabled ?? true,
+  })
+}
+
+/** useSaveSLO creates or replaces a monitor's SLO. */
+export function useSaveSLO(t: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: SLOInput }): Promise<SLODetail> =>
+      unwrap(
+        client.PUT('/api/teams/{teamID}/monitors/{monitorID}/slo', { params: { path: { teamID: t, monitorID: id } }, body }),
+      ),
+    onSuccess: (saved, { id }) => {
+      qc.setQueryData(keys.slo(t, id), saved)
+      return qc.invalidateQueries({ queryKey: keys.slaReportsAll(t) })
+    },
+  })
+}
+
+/** useDeleteSLO removes a monitor's SLO. */
+export function useDeleteSLO(t: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number): Promise<void> =>
+      unwrap(client.DELETE('/api/teams/{teamID}/monitors/{monitorID}/slo', { params: { path: { teamID: t, monitorID: id } } })),
+    onSuccess: (_r, id) => {
+      qc.setQueryData(keys.slo(t, id), null)
+      return qc.invalidateQueries({ queryKey: keys.slaReportsAll(t) })
+    },
+  })
+}
+
+/** useSLAReport loads the SLA report of month (YYYY-MM). */
+export function useSLAReport(t: number, month: string) {
+  return useQuery({
+    queryKey: keys.slaReport(t, month),
+    queryFn: (): Promise<SLAReport> =>
+      unwrap(client.GET('/api/teams/{teamID}/reports/sla', { params: { path: { teamID: t }, query: { month } } })),
   })
 }
 

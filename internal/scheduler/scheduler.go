@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/davidsugianto/upsera/internal/checker"
@@ -51,6 +52,15 @@ type Options struct {
 	// order. It is called with the scheduler's lock held, so it must not
 	// block or call back into the scheduler (nil = drop).
 	OnTransition func(model.Transition)
+	// Baselines loads the 7-day latency baselines for DEGRADED detection
+	// (see latency.go), hourly and in the background (nil = detection off).
+	Baselines Baselines
+	// BaselineRefresh and LatencyWindow override the baseline reload
+	// interval and the rolling latency window. They are test hooks, not
+	// configuration: zero means the fixed defaults (baselineRefresh,
+	// latencyWindow).
+	BaselineRefresh time.Duration
+	LatencyWindow   time.Duration
 }
 
 // monitorSlot tracks the currently-running worker goroutine for one
@@ -102,6 +112,12 @@ type Scheduler struct {
 	maintSeen map[int64]bool
 	startedAt time.Time
 
+	// DEGRADED detection (see latency.go). lat holds each monitor's latency
+	// window per region, guarded by mu; baselines is swapped whole by the
+	// baseline loop (nil until the first successful load).
+	lat       map[int64]map[string]*latencyTrack
+	baselines atomic.Pointer[map[model.BaselineKey]model.LatencyBaseline]
+
 	runCtx context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -127,6 +143,10 @@ type Scheduler struct {
 	// sweepInterval is how often their staleness is re-evaluated.
 	now           func() time.Time
 	sweepInterval time.Duration
+	// latWindow is the rolling latency window, baselineEvery how often the
+	// baselines are reloaded.
+	latWindow     time.Duration
+	baselineEvery time.Duration
 }
 
 // New builds a Scheduler. Call Start to begin running checks.
@@ -139,6 +159,12 @@ func New(st Store, ck Checker, opts Options) *Scheduler {
 	}
 	if opts.FlushInterval <= 0 {
 		opts.FlushInterval = time.Second
+	}
+	if opts.LatencyWindow <= 0 {
+		opts.LatencyWindow = latencyWindow
+	}
+	if opts.BaselineRefresh <= 0 {
+		opts.BaselineRefresh = baselineRefresh
 	}
 	log := opts.Logger
 	if log == nil {
@@ -164,6 +190,7 @@ func New(st Store, ck Checker, opts Options) *Scheduler {
 		regions:   make(map[int64]map[string]model.RegionState),
 		graceFrom: make(map[int64]time.Time),
 		maintSeen: make(map[int64]bool),
+		lat:       make(map[int64]map[string]*latencyTrack),
 
 		dbReachable: true,
 
@@ -173,6 +200,8 @@ func New(st Store, ck Checker, opts Options) *Scheduler {
 
 		now:           time.Now,
 		sweepInterval: defaultSweepInterval,
+		latWindow:     opts.LatencyWindow,
+		baselineEvery: opts.BaselineRefresh,
 	}
 }
 
@@ -214,6 +243,10 @@ func (s *Scheduler) Start(ctx context.Context, monitors []model.Monitor, states 
 	s.wg.Add(2)
 	go s.flushLoop(s.runCtx)
 	go s.sweepLoop(s.runCtx)
+	if s.opts.Baselines != nil {
+		s.wg.Add(1)
+		go s.baselineLoop(s.runCtx)
+	}
 
 	for _, m := range monitors {
 		s.upsert(m, true)
@@ -238,6 +271,7 @@ func (s *Scheduler) upsert(m model.Monitor, jittered bool) {
 	}
 	s.monitors[m.ID] = m
 	s.syncRegionsLocked(m)
+	s.syncLatencyLocked(m)
 	if m.Type == model.TypePush && m.PushToken != "" {
 		s.pushIdx[m.PushToken] = m.ID
 	}
@@ -329,6 +363,7 @@ func (s *Scheduler) Remove(id int64) {
 	delete(s.regions, id)
 	delete(s.graceFrom, id)
 	delete(s.maintSeen, id)
+	delete(s.lat, id)
 	if hadMonitor && m.PushToken != "" {
 		delete(s.pushIdx, m.PushToken)
 	}

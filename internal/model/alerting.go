@@ -86,10 +86,23 @@ const (
 	// one monitor; they carry no alert and are not acknowledgeable.
 	EventProbeSilent    AlertEvent = "probe_silent"
 	EventProbeRecovered AlertEvent = "probe_recovered"
+	// EventDegraded / EventLatencyRecovered are sent when an UP monitor
+	// turns DEGRADED (slow) and back; they carry no alert and are not
+	// acknowledgeable.
+	EventDegraded         AlertEvent = "degraded"
+	EventLatencyRecovered AlertEvent = "latency_recovered"
+	// EventSLOBurn / EventSLOBurnRecovered are sent when an SLO's fast or
+	// slow burn-rate alert starts and stops firing; they carry no alert and
+	// are not acknowledgeable.
+	EventSLOBurn          AlertEvent = "slo_burn"
+	EventSLOBurnRecovered AlertEvent = "slo_burn_recovered"
 )
 
 // AlertEvents lists every notification kind.
-var AlertEvents = []AlertEvent{EventDown, EventRecovered, EventFlapping, EventCertExpiry, EventTest, EventProbeSilent, EventProbeRecovered}
+var AlertEvents = []AlertEvent{
+	EventDown, EventRecovered, EventFlapping, EventCertExpiry, EventTest, EventProbeSilent, EventProbeRecovered,
+	EventDegraded, EventLatencyRecovered, EventSLOBurn, EventSLOBurnRecovered,
+}
 
 // Valid reports whether e is a known event kind.
 func (e AlertEvent) Valid() bool { return slices.Contains(AlertEvents, e) }
@@ -219,4 +232,11 @@ type Transition struct {
 	// set when this transition started or ended flapping.
 	Flapping    bool
 	FlapChanged bool
+	// Region, LatencyP95Ms and BaselineMs describe the latency of a
+	// transition into or out of DEGRADED: the region whose recent p95
+	// (LatencyP95Ms) is compared with its 7-day baseline (BaselineMs).
+	// Zero for every other transition.
+	Region       string
+	LatencyP95Ms int32
+	BaselineMs   int32
 }

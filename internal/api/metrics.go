@@ -47,8 +47,8 @@ func metricsHandler(d Deps) http.HandlerFunc {
 
 		now := time.Now()
 		var up, status, latency, paused, cert metricFamily
-		up.head("upsera_monitor_up", "1 when the monitor is up or pending, 0 when down (absent while paused or unchecked).")
-		status.head("upsera_monitor_status", "Monitor state: 0 down, 1 up, 2 pending, 3 maintenance (absent while paused or unchecked).")
+		up.head("upsera_monitor_up", "1 when the monitor is up, degraded or pending, 0 when down (absent while paused or unchecked).")
+		status.head("upsera_monitor_status", "Monitor state: 0 down, 1 up, 2 pending, 3 maintenance, 4 degraded (absent while paused or unchecked).")
 		latency.head("upsera_monitor_response_ms", "Latency of the most recent check in milliseconds.")
 		paused.head("upsera_monitor_paused", "1 when the monitor is paused.")
 		cert.head("upsera_monitor_cert_expiry_seconds", "Seconds until the TLS certificate expires (negative once expired).")

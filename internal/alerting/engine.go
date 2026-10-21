@@ -85,6 +85,8 @@ type Engine struct {
 	signal  chan struct{}
 	// probePending holds queued probe_silent / probe_recovered events (see probe.go).
 	probePending []probeEvent
+	// sloPending holds queued slo_burn / slo_burn_recovered events (see slo.go).
+	sloPending []sloEvent
 
 	mu       sync.Mutex
 	states   StateSource
@@ -98,6 +100,16 @@ type Engine struct {
 	certSent map[string]struct{}
 	warned   map[string]bool // alert ids already warned about having no channels
 	now      func() time.Time
+
+	// latencySent is the dedupe key of the last degraded /
+	// latency_recovered message per monitor (see degraded.go).
+	latencySent map[int64]string
+	// latencyAnnounced holds the monitors that were told "degraded" (or were
+	// DEGRADED when the engine started) and not yet "latency_recovered".
+	latencyAnnounced map[int64]bool
+	// sloSent is the dedupe key of the last SLO message per "monitor:level"
+	// (see slo.go).
+	sloSent map[string]string
 
 	syncMu sync.Mutex // serializes ack listener syncs; guards runCtx writes
 
@@ -125,21 +137,24 @@ func New(opts Options) *Engine {
 		notifiers = notify.New(opts.Notify)
 	}
 	e := &Engine{
-		st:          opts.Store,
-		log:         opts.Logger,
-		opts:        opts,
-		signal:      make(chan struct{}, 1),
-		monitors:    make(map[int64]model.Monitor),
-		children:    make(map[int64][]int64),
-		channels:    make(map[int64]model.Channel),
-		policies:    make(map[int64]model.EscalationPolicy),
-		alerts:      make(map[int64]*model.Alert),
-		byID:        make(map[string]*model.Alert),
-		dirty:       make(map[string]struct{}),
-		certSent:    make(map[string]struct{}),
-		warned:      make(map[string]bool),
-		now:         time.Now,
-		dbReachable: true,
+		st:               opts.Store,
+		log:              opts.Logger,
+		opts:             opts,
+		signal:           make(chan struct{}, 1),
+		monitors:         make(map[int64]model.Monitor),
+		children:         make(map[int64][]int64),
+		channels:         make(map[int64]model.Channel),
+		policies:         make(map[int64]model.EscalationPolicy),
+		alerts:           make(map[int64]*model.Alert),
+		byID:             make(map[string]*model.Alert),
+		dirty:            make(map[string]struct{}),
+		certSent:         make(map[string]struct{}),
+		latencySent:      make(map[int64]string),
+		latencyAnnounced: make(map[int64]bool),
+		sloSent:          make(map[string]string),
+		warned:           make(map[string]bool),
+		now:              time.Now,
+		dbReachable:      true,
 	}
 	e.disp = notify.NewDispatcher(notifiers, e.recordAttempt, opts.Logger)
 	e.acks = notify.NewAckListeners(opts.Notify, func(id string, src model.AckSource, name string) error {
@@ -150,7 +165,8 @@ func New(opts Options) *Engine {
 }
 
 // Start loads snap, reconciles its open alerts against the live states
-// (alerts whose monitor is UP again are resolved and their recovery sent;
+// (alerts whose monitor is UP or DEGRADED again are resolved and their
+// recovery sent;
 // those in MAINTENANCE are resolved silently; the rest resume escalating
 // from their persisted step) and starts the event loop, the outbox flusher
 // and the acknowledgement listeners.
@@ -166,7 +182,7 @@ func (e *Engine) Start(ctx context.Context, snap Snapshot, states StateSource) {
 }
 
 // load seeds the caches from snap and reconciles its open alerts with the
-// live states: resolved when UP or in MAINTENANCE, and suppression matched
+// live states: resolved when UP, DEGRADED or in MAINTENANCE, and suppression matched
 // to the ancestors' states.
 func (e *Engine) load(snap Snapshot, states StateSource) {
 	e.mu.Lock()
@@ -176,6 +192,11 @@ func (e *Engine) load(snap Snapshot, states StateSource) {
 		e.monitors[m.ID] = m
 	}
 	e.rebuildChildrenLocked()
+	for id := range e.monitors {
+		if st, ok := e.stateLocked(id); ok && st.Status == model.StatusDegraded {
+			e.latencyAnnounced[id] = true // announced before the restart
+		}
+	}
 	for _, c := range snap.Channels {
 		e.channels[c.ID] = c
 	}
@@ -205,7 +226,7 @@ func (e *Engine) load(snap Snapshot, states StateSource) {
 			at = st.Since
 		}
 		switch st.Status {
-		case model.StatusUp:
+		case model.StatusUp, model.StatusDegraded:
 			e.resolveRecoveredLocked(p, at)
 		case model.StatusMaintenance:
 			e.resolveLocked(p, at, model.ResolutionMaintenance)
@@ -250,13 +271,14 @@ func (e *Engine) loop(ctx context.Context) {
 	}
 }
 
-// drain applies every queued transition, then every queued probe event, in order.
+// drain applies every queued transition, then every queued probe event,
+// then every queued SLO event, each in order.
 func (e *Engine) drain() {
 	e.busMu.Lock()
-	ts, ps := e.pending, e.probePending
-	e.pending, e.probePending = nil, nil
+	ts, ps, ss := e.pending, e.probePending, e.sloPending
+	e.pending, e.probePending, e.sloPending = nil, nil, nil
 	e.busMu.Unlock()
-	if len(ts) == 0 && len(ps) == 0 {
+	if len(ts) == 0 && len(ps) == 0 && len(ss) == 0 {
 		return
 	}
 	e.mu.Lock()
@@ -266,6 +288,9 @@ func (e *Engine) drain() {
 	}
 	for _, p := range ps {
 		e.handleProbeLocked(p)
+	}
+	for _, se := range ss {
+		e.handleSLOLocked(se)
 	}
 }
 
@@ -285,6 +310,10 @@ func (e *Engine) handleLocked(t model.Transition) {
 		e.reconcileDescendantsLocked(m.ID)
 		return
 	}
+	// UP <-> DEGRADED never touches alerts or flapping; DEGRADED otherwise
+	// counts as UP below.
+	e.latencyLocked(m, t)
+	recovered := t.To == model.StatusUp || t.To == model.StatusDegraded
 	if t.FlapChanged && t.Flapping {
 		if a != nil {
 			a.Flapping = true
@@ -311,7 +340,7 @@ func (e *Engine) handleLocked(t model.Transition) {
 			} else {
 				e.openLocked(m, t)
 			}
-		case model.StatusUp:
+		case model.StatusUp, model.StatusDegraded:
 			if a != nil {
 				e.resolveRecoveredLocked(a, t.At)
 			}
@@ -331,7 +360,7 @@ func (e *Engine) handleLocked(t model.Transition) {
 		} else if a.Flapping {
 			e.stopFlappingLocked(a)
 		}
-	case t.To == model.StatusUp && (t.From == model.StatusDown || a != nil):
+	case recovered && (t.From == model.StatusDown || a != nil):
 		// An open alert is also resolved when it recovers from PENDING:
 		// after a restart an alert can be open while the state is PENDING.
 		if a != nil {
@@ -553,6 +582,8 @@ func (e *Engine) RemoveMonitor(id int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	delete(e.monitors, id)
+	delete(e.latencySent, id)
+	delete(e.latencyAnnounced, id)
 	for aid, a := range e.byID {
 		if a.MonitorID == id {
 			delete(e.byID, aid)

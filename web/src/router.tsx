@@ -23,6 +23,7 @@ import { IncidentsPage } from './pages/status/IncidentsPage'
 import { SubscribersPage } from './pages/status/SubscribersPage'
 import { MembersPage } from './pages/MembersPage'
 import { TokensPage } from './pages/TokensPage'
+import { ReportsPage } from './pages/reports/ReportsPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <HomePage /> },
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
       { path: 'maintenance', element: <MaintenancePage /> },
       { path: 'maintenance/new', element: <MaintenanceFormPage /> },
       { path: 'maintenance/:windowId/edit', element: <MaintenanceFormPage /> },
+      { path: 'reports', element: <ReportsPage /> },
       { path: 'members', element: <MembersPage /> },
       { path: 'tokens', element: <TokensPage /> },
       { path: '*', element: <NotFoundPage /> },

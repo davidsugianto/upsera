@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/davidsugianto/upsera/internal/model"
 )
 
 type webhookConfig struct {
@@ -54,6 +56,13 @@ type webhookPayload struct {
 	CertExpiresAt *string `json:"cert_expires_at"`
 	CertDaysLeft  int     `json:"cert_days_left"`
 	Region        string  `json:"region,omitempty"`
+	LatencyP95Ms  int32   `json:"latency_p95_ms,omitempty"`
+	BaselineMs    int32   `json:"baseline_ms,omitempty"`
+	// SLO fields, set for slo_burn / slo_burn_recovered only.
+	SLOLevel       string   `json:"slo_level,omitempty"`
+	SLOTarget      *float64 `json:"slo_target,omitempty"`
+	BurnRate       *float64 `json:"burn_rate,omitempty"`
+	BudgetConsumed *float64 `json:"budget_consumed,omitempty"`
 }
 
 func (w *webhook) Send(ctx context.Context, cfg json.RawMessage, ev Event) error {
@@ -74,6 +83,13 @@ func (w *webhook) Send(ctx context.Context, cfg json.RawMessage, ev Event) error
 	}
 	p.CertDaysLeft = ev.CertDaysLeft
 	p.Region = ev.Region
+	p.LatencyP95Ms, p.BaselineMs = ev.LatencyP95Ms, ev.BaselineMs
+	if ev.Kind == model.EventSLOBurn || ev.Kind == model.EventSLOBurnRecovered {
+		p.SLOLevel, p.SLOTarget, p.BurnRate = ev.SLOLevel, new(ev.SLOTarget), new(ev.BurnRate)
+		if ev.BudgetConsumed >= 0 {
+			p.BudgetConsumed = new(ev.BudgetConsumed)
+		}
+	}
 	_, err = postJSON(ctx, w.client, c.URL, c.Headers, p)
 	return err
 }

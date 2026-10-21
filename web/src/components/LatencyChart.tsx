@@ -20,7 +20,8 @@ function regionColor(i: number): string {
 }
 
 /**
- * LatencyChart plots heartbeats (oldest→newest); down and maintenance points are gaps.
+ * LatencyChart plots heartbeats (oldest→newest); down and maintenance points are gaps
+ * (degraded points are plotted: they are the slow responses).
  * With heartbeats from several regions it draws one line per region.
  */
 export function LatencyChart({ beats }: { beats: Heartbeat[] }) {

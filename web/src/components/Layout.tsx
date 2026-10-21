@@ -64,6 +64,9 @@ export function Layout({ teamId, children }: { teamId?: number; children: ReactN
                 <NavLink to={`${base}/maintenance`} className={link}>
                   Maintenance
                 </NavLink>
+                <NavLink to={`${base}/reports`} className={link}>
+                  Reports
+                </NavLink>
                 <NavLink to={`${base}/members`} className={link}>
                   Members
                 </NavLink>

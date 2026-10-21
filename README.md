@@ -15,7 +15,9 @@ over Server-Sent Events. Phase 4 adds Docker container monitoring through a sock
 Phase 5 adds public status pages at `/status/<slug>` (optionally on a custom domain), incidents
 auto-drafted from outages, and email, webhook and RSS subscribers. Subscriber email needs the
 instance SMTP server (Administration → settings). Phase 6 adds [multi-location probes](#multi-location-probes):
-remote `upsera-probe` agents, per-monitor regions with a quorum, and a "probe silent" alert. Packaging adds
+remote `upsera-probe` agents, per-monitor regions with a quorum, and a "probe silent" alert. Phase 7 adds a
+[DEGRADED state and SLOs](#degraded-state-and-slos) (error budgets, burn-rate notifications, a monthly SLA
+report) and [monitors as code](#monitors-as-code-with-upsctl) with the `upsctl` CLI. Packaging adds
 an optional Caddy HTTPS profile, Prometheus `/metrics` and backup notes.
 
 ## Run with Docker Compose
@@ -112,8 +114,8 @@ scrape_configs:
 
 | Metric (gauge) | Meaning |
 |---|---|
-| `upsera_monitor_up` | `1` up or pending, `0` down. Absent while paused or not yet checked. |
-| `upsera_monitor_status` | `0` down, `1` up, `2` pending, `3` maintenance. |
+| `upsera_monitor_up` | `1` up, degraded or pending, `0` down. Absent while paused or not yet checked. |
+| `upsera_monitor_status` | `0` down, `1` up, `2` pending, `3` maintenance, `4` degraded. |
 | `upsera_monitor_response_ms` | Latency of the most recent check. |
 | `upsera_monitor_paused` | `1` when paused. |
 | `upsera_monitor_cert_expiry_seconds` | Seconds until the TLS certificate expires, for HTTPS monitors. |
@@ -190,6 +192,54 @@ The `block_private_targets` instance setting also applies to probes.
 regions stores three times the heartbeats (see `HEARTBEAT_RETENTION_DAYS`). Push and Docker monitors
 run only on the server, and remote regions are limited to HTTP, keyword, TCP, ping and DNS monitors.
 
+## Degraded state and SLOs
+
+**DEGRADED.** A monitor that answers, but far slower than usual, is shown as `degraded` instead of `up`. A
+region is degraded when its p95 latency over the last 15 minutes is more than 3× its own 7-day p95 baseline
+(and at least 100 ms above it); it recovers at 2× or lower. It needs 100 baseline samples first, applies to
+HTTP, keyword, TCP, ping and DNS monitors, and counts as up for uptime. It sends one `degraded` message and one
+`latency_recovered` message to the monitor's first escalation step; it never opens an alert. The baseline is
+read from the database once an hour, so a database outage freezes the baseline but never stops your checks.
+
+**SLOs.** Give a monitor a target (for example 99.9 %) over 7 to 90 days. The monitor page shows the error
+budget and a burndown chart. Burn-rate notifications (`slo_burn`, `slo_burn_recovered`, notification only)
+fire on the usual two-window rule: **fast** when the 1 h and 5 min burn rates are both at least 14.4×,
+**slow** when the 6 h and 30 min burn rates are both at least 6× (both thresholds are editable). The
+evaluator reads heartbeats from the database once a minute, so it skips a tick while Postgres is down;
+DOWN alerts are not affected. A check is good when the monitor is up, pending or degraded; maintenance is
+not counted. **Reports** (team menu) lists, per month, uptime, SLO met or missed, downtime, alerts and p95
+for every monitor, with a CSV download and a print layout (`GET /api/teams/{id}/reports/sla?month=YYYY-MM`).
+The report's p95 is the check-weighted average of the daily p95 values.
+
+Rolling back to a build older than Phase 7 needs `UPDATE upsera.heartbeats SET status = 1 WHERE status = 4`
+and the same on `upsera.monitor_state` first, because the older code does not know status `4`. The older
+build starts fine against a database that already has migration `00006` (it applies nothing; a test covers
+this), and the extra `upsera.slos` table and the wider `notification_log` event check do no harm. To remove
+them as well, run the `-- +goose Down` statements of `internal/store/migrations/00006_slos.sql` **and**
+`DELETE FROM upsera.goose_db_version WHERE version_id = 6` together (one without the other leaves the
+migration state wrong). That also deletes the log rows of the new event kinds.
+
+## Monitors as code with upsctl
+
+`upsctl` exports, diffs and applies a team's channels, escalation policies, monitors (with their SLO) and
+status pages as YAML through the REST API, for example from CI (see `deploy/examples/`).
+
+```sh
+export UPSERA_URL=https://status.example.com UPSERA_TOKEN=ups_xxxxxxxx   # a team token; apply needs `write`
+upsctl export -o upsera.yaml          # live team -> YAML, secrets as ${UPSERA_<CHANNEL>_<FIELD>} placeholders
+upsctl diff -f upsera.yaml            # exit 0 = nothing to do, 2 = changes, 1 = error
+upsctl apply -f upsera.yaml --yes     # create and update; add --prune to delete what the file no longer lists
+```
+
+Resources are matched by name inside the team (status pages by slug) and refer to each other by name.
+`upsctl` refuses to run when a team has duplicate names. Secrets are never written by `export`; `apply`
+reads them from the environment (`${UPSERA_...}` inside string values, `$$` for a literal `$`; other variables, and `UPSERA_TOKEN` and
+`UPSERA_URL`, cannot be referenced) and the server
+ignores a channel update that changes nothing, so repeated applies stay quiet. Push URLs are generated per
+instance, and a status page's `custom_domain` can only be set by an instance admin session in the browser (apply skips it with
+a warning). Regions and Docker hosts named by a monitor must already exist. Quote YAML names such as
+`n`, `no` or `on` (YAML 1.1 reads them as booleans). Build it with `make upsctl` or `docker build --target upsctl .`.
+
 ## How it compares
 
 | | Upsera | Uptime Kuma | Gatus | Upptime |
@@ -201,7 +251,7 @@ run only on the server, and remote regions are limited to HTTP, keyword, TCP, pi
 | Public status pages, incidents, subscribers | yes | status pages, incidents | status page | status site |
 | Prometheus `/metrics` | yes, per team | yes | yes | no |
 | Multi-location probes with quorum | yes | no | no | no |
-| SLOs, monitors as code | planned (Phase 7) | no | config is code | config is code |
+| SLOs, monitors as code | yes (`upsctl` diff / apply) | no | config is code | config is code |
 
 Based on each project's documentation at the time of writing; check theirs for the current state.
 Uptime Kuma, Gatus and Upptime are good projects and a better fit when you want something smaller.

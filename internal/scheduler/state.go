@@ -13,11 +13,13 @@ const (
 	flapThreshold = 5
 )
 
-// nextState applies one observation (StatusUp, StatusDown or
-// StatusMaintenance) at time at to prev. A failed check makes the monitor
-// PENDING until it has failed more than retries times in a row, then
-// DOWN; the DOWN state's Since is the first failed check, i.e. the start
-// of the outage.
+// nextState applies one observation (StatusUp, StatusDegraded, StatusDown
+// or StatusMaintenance) at time at to prev. A failed check makes the
+// monitor PENDING until it has failed more than retries times in a row,
+// then DOWN; the DOWN state's Since is the first failed check, i.e. the
+// start of the outage. StatusDegraded is a successful (but slow) check: it
+// behaves like StatusUp, and a failure from DEGRADED starts over at
+// PENDING.
 func nextState(prev model.MonitorState, havePrev bool, obs model.Status, at time.Time, retries int) model.MonitorState {
 	ns := model.MonitorState{
 		MonitorID:    prev.MonitorID,
@@ -27,7 +29,7 @@ func nextState(prev model.MonitorState, havePrev bool, obs model.Status, at time
 	}
 	same := func(s model.Status) bool { return havePrev && prev.Status == s }
 	switch obs {
-	case model.StatusMaintenance, model.StatusUp:
+	case model.StatusMaintenance, model.StatusUp, model.StatusDegraded:
 		ns.Status = obs
 		ns.Since = at
 		if same(obs) {
