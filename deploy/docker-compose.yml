@@ -6,11 +6,16 @@
 #   ... --profile https                                                            # add Caddy (HTTPS on 80/443)
 #
 # `make up` / `make down` wrap the local-db variant.
+#
+# Released images: set UPSERA_VERSION (for example 0.1.0) in deploy/.env or the
+# environment, then `docker compose -f deploy/docker-compose.yml pull upsera`
+# and `up -d` without --build. With --build (or the default `dev` tag) the
+# image is built from this checkout instead.
 name: upsera
 
 services:
   upsera:
-    image: upsera/upsera:${UPSERA_VERSION:-dev}
+    image: ghcr.io/davidsugianto/upsera:${UPSERA_VERSION:-dev}
     build:
       context: ..
       args:

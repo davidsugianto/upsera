@@ -5,7 +5,7 @@ import { compareRegions } from './beats'
 export function probeRunCommand(serverUrl: string, token: string): string {
   const lines = ['docker run -d --name upsera-probe --restart unless-stopped', `  -e SERVER_URL=${serverUrl}`]
   if (serverUrl.startsWith('http://')) lines.push('  -e ALLOW_INSECURE_HTTP=1')
-  lines.push(`  -e PROBE_TOKEN=${token}`, '  -v upsera-probe:/data', '  upsera/upsera-probe')
+  lines.push(`  -e PROBE_TOKEN=${token}`, '  -v upsera-probe:/data', '  ghcr.io/davidsugianto/upsera-probe')
   return lines.join(' \\\n')
 }
 

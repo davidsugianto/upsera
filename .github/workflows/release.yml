@@ -1,0 +1,278 @@
+name: release
+
+# A `v*` tag push builds and publishes a release: the archives and SHA256SUMS
+# on a GitHub Release, and multi-arch images on GHCR. Run it by hand
+# (workflow_dispatch) with dry_run left on to build everything without
+# publishing anything: no registry login, no image push, no release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build everything but publish nothing
+        type: boolean
+        default: true
+
+# Every job asks for what it needs; nothing is granted by default.
+permissions: {}
+
+# Never run two releases of the same ref at once, and never cancel one
+# halfway through publishing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # `true` only for a manual run with dry_run on. A tag push always publishes.
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      minor: ${{ steps.meta.outputs.minor }}
+      stable: ${{ steps.meta.outputs.stable }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      # The tag reaches the script only through env, never through ${{ }}.
+      - name: release metadata
+        id: meta
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          publish=true
+          if [ "$DRY_RUN" = "true" ]; then publish=false; fi
+          if [ "$REF_TYPE" = "tag" ]; then
+            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "::error::tag must look like v1.2.3 or v1.2.3-rc.1"
+              exit 1
+            fi
+            version="${REF_NAME#v}"
+          elif [ "$publish" = "true" ]; then
+            echo "::error::only a tag can be published; run on a tag or keep dry_run on"
+            exit 1
+          else
+            version="0.0.0-dryrun.${SHA:0:12}"
+          fi
+          core="${version%%-*}"
+          minor="${core%.*}"
+          stable=true
+          case "$version" in *-*) stable=false ;; esac
+          prerelease=false
+          case "$version" in *-* | 0.*) prerelease=true ;; esac
+          {
+            echo "version=$version"
+            echo "minor=$minor"
+            echo "stable=$stable"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$version minor=$minor stable=$stable prerelease=$prerelease publish=$publish"
+
+      # The same checks as ci.yml (jobs test and web), copied here so a
+      # release never ships something CI would have rejected.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "needs gofmt:"; echo "$unformatted"; exit 1; fi
+      - name: vet
+        run: go vet ./...
+      - name: build
+        run: go build ./...
+      - name: build probe
+        run: go build ./cmd/upsera-probe
+      - name: build upsctl
+        run: go build ./cmd/upsctl
+      - name: test
+        run: go test -race -count=1 ./...
+      - name: web install
+        working-directory: web
+        run: npm ci
+      - name: API types up to date
+        working-directory: web
+        run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
+      - name: web lint
+        working-directory: web
+        run: npm run lint
+      - name: web test
+        working-directory: web
+        run: npm test
+      - name: web build
+        working-directory: web
+        run: npm run build
+      - name: embed
+        run: go build ./... && go test ./web/
+
+  binaries:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      # upsera embeds web/dist/app, so the dashboard is built first.
+      - name: build dashboard
+        working-directory: web
+        run: npm ci && npm run build
+      - name: cross-compile and package
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              name="upsera_${VERSION}_${os}_${arch}"
+              stage="build/${name}"
+              mkdir -p "$stage"
+              for cmd in upsera upsera-probe upsctl; do
+                CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+                  -ldflags "-s -w -X main.version=${VERSION}" \
+                  -o "${stage}/${cmd}" "./cmd/${cmd}"
+              done
+              cp LICENSE README.md "$stage/"
+              tar -C "$stage" --owner=0 --group=0 --numeric-owner --sort=name \
+                -czf "dist/${name}.tar.gz" upsera upsera-probe upsctl LICENSE README.md
+            done
+          done
+          (cd dist && sha256sum -- *.tar.gz > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - name: smoke the linux/amd64 binaries
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          for cmd in upsera upsera-probe; do
+            got=$("build/upsera_${VERSION}_linux_amd64/${cmd}" version)
+            [ "$got" = "$VERSION" ] || { echo "$cmd version: got $got, want $VERSION"; exit 1; }
+          done
+          "build/upsera_${VERSION}_linux_amd64/upsctl" version | grep -qxF "upsctl ${VERSION}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  images:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # The server is the Dockerfile's last stage, so it has no target.
+          - image: ghcr.io/davidsugianto/upsera
+            target: ""
+            description: Self-hosted uptime monitoring and status pages
+          - image: ghcr.io/davidsugianto/upsera-probe
+            target: probe
+            description: Upsera remote probe agent
+          - image: ghcr.io/davidsugianto/upsctl
+            target: upsctl
+            description: Upsera monitors-as-code CLI
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: image tags
+        id: tags
+        env:
+          IMAGE: ${{ matrix.image }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          MINOR: ${{ needs.verify.outputs.minor }}
+          STABLE: ${{ needs.verify.outputs.stable }}
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE}:${VERSION}"
+            # A pre-release tag (v1.2.3-rc.1) must not move 1.2 or latest.
+            if [ "$STABLE" = "true" ]; then
+              echo "${IMAGE}:${MINOR}"
+              echo "${IMAGE}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: log in to GHCR
+        if: needs.verify.outputs.publish == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build${{ needs.verify.outputs.publish == 'true' && ' and push' || ' (dry run, no push)' }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.verify.outputs.publish == 'true' }}
+          build-args: |
+            VERSION=${{ needs.verify.outputs.version }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.description=${{ matrix.description }}
+
+  release:
+    needs: [verify, binaries, images]
+    if: needs.verify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+      - name: create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--verify-tag --generate-notes --title "$TAG")
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}" dist/*.tar.gz dist/SHA256SUMS
