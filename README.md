@@ -1,6 +1,18 @@
 # upsera
 Self-hosted uptime monitoring and status pages for teams. Multi-region checks, fewer false alarms.
 
+![Upsera dashboard](site/public/screenshots/dashboard-light.png)
+
+<table>
+<tr>
+<td><a href="site/public/screenshots/monitor-detail.png"><img src="site/public/screenshots/monitor-detail.png" alt="A degraded monitor with its error budget card"></a></td>
+<td><a href="site/public/screenshots/reports.png"><img src="site/public/screenshots/reports.png" alt="The monthly SLA report with met and missed SLOs"></a></td>
+<td><a href="site/public/screenshots/status-page.png"><img src="site/public/screenshots/status-page.png" alt="A public status page"></a></td>
+</tr>
+</table>
+
+Documentation: the [docs site](https://davidsugianto.github.io/upsera/) (source in [`site/`](site/); it is published from `master` once GitHub Pages is switched on for the repository). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`SECURITY.md`](SECURITY.md). Licence: [MIT](LICENSE).
+
 The product plan lives in [`docs/upsera-build-plan.html`](docs/upsera-build-plan.html).
 
 ## Status
@@ -18,7 +30,10 @@ instance SMTP server (Administration → settings). Phase 6 adds [multi-location
 remote `upsera-probe` agents, per-monitor regions with a quorum, and a "probe silent" alert. Phase 7 adds a
 [DEGRADED state and SLOs](#degraded-state-and-slos) (error budgets, burn-rate notifications, a monthly SLA
 report) and [monitors as code](#monitors-as-code-with-upsctl) with the `upsctl` CLI. Packaging adds
-an optional Caddy HTTPS profile, Prometheus `/metrics` and backup notes.
+an optional Caddy HTTPS profile, Prometheus `/metrics`, backup notes, a docs site, `make screenshots`
+and a [release workflow](#run-a-released-version). No release has been tagged yet; `v0.1.0` is planned as a
+pre-release, because a clean-host install, a real Let's Encrypt certificate and a multi-VPS probe setup are
+not verified yet.
 
 ## Run with Docker Compose
 
@@ -37,6 +52,24 @@ Supabase instead, set its `DATABASE_URL` in `deploy/.env` (see `deploy/.env.exam
 To start over with an empty database: `docker compose -f deploy/docker-compose.yml --profile local-db down -v`.
 
 `make help` lists every task (build, test, lint, gen-api, ...).
+
+### Run a released version
+
+Tagged releases publish multi-arch images to GHCR (`ghcr.io/davidsugianto/upsera`, `upsera-probe` and
+`upsctl`) and archives with `SHA256SUMS` to GitHub Releases (linux and macOS, amd64 and arm64). None is
+published yet, so until the first tag use `make up`. After a release, pull instead of building:
+
+```sh
+make env                                   # writes deploy/.env if missing
+export UPSERA_VERSION=0.1.0                # a published version, without the leading v
+docker compose -f deploy/docker-compose.yml --profile local-db pull upsera
+docker compose -f deploy/docker-compose.yml --profile local-db up -d
+deploy/smoke.sh                            # waits for the server, creates the first admin, prints the elapsed time
+```
+
+`deploy/smoke.sh` takes the URL as its first argument (default `http://localhost:3080`) and reads
+`SMOKE_EMAIL` and `SMOKE_PASSWORD`; it generates and prints a password only when it has to create the
+first admin.
 
 ### HTTPS with Caddy
 
@@ -141,13 +174,15 @@ docker run -d --restart unless-stopped --name upsera-probe \
   -v upsera-probe:/data \
   -e SERVER_URL=https://status.example.com \
   -e PROBE_TOKEN=upr_xxxxxxxx \
-  upsera/upsera-probe:latest
+  ghcr.io/davidsugianto/upsera-probe:latest
 ```
 
 On first start the probe exchanges the token for a long-lived credential (`upp_...`) and keeps it in
 `/data/credential` (mode 0600), so keep `/data` on a volume; after that `PROBE_TOKEN` is ignored.
-The region comes from the probe row on the server, so there is no `REGION` variable. Build the image
-yourself with `make docker-build-probe` (`docker build --target probe`) or the binary with `make probe`.
+The region comes from the probe row on the server, so there is no `REGION` variable. The image name above
+is published by the release workflow (none is published yet); until then build it yourself with
+`make docker-build-probe` (`docker build --target probe`, tagged `upsera-probe:dev`) or the binary with
+`make probe`.
 To rotate or revoke a probe's credential, issue a new registration token for it (the old credential
 stops working at once) or delete the probe. A region still used by a monitor cannot be deleted. Deleting a
 probe also deletes the heartbeats it reported, so that region's per-region latency history is gone (daily
@@ -238,23 +273,26 @@ reads them from the environment (`${UPSERA_...}` inside string values, `$$` for 
 ignores a channel update that changes nothing, so repeated applies stay quiet. Push URLs are generated per
 instance, and a status page's `custom_domain` can only be set by an instance admin session in the browser (apply skips it with
 a warning). Regions and Docker hosts named by a monitor must already exist. Quote YAML names such as
-`n`, `no` or `on` (YAML 1.1 reads them as booleans). Build it with `make upsctl` or `docker build --target upsctl .`.
+`n`, `no` or `on` (YAML 1.1 reads them as booleans). Build it with `make upsctl` or `docker build --target upsctl .`; releases will also publish the
+`ghcr.io/davidsugianto/upsctl` image and `upsctl` in the release archives.
 
 ## How it compares
 
 | | Upsera | Uptime Kuma | Gatus | Upptime |
 |---|---|---|---|---|
 | Runs as | one server + Postgres | one server (SQLite / MariaDB) | one binary, YAML config | GitHub Actions + GitHub Pages |
-| Teams, roles, API tokens | yes | no | no | no |
+| Teams, roles, API tokens | yes | several admin users, no roles or teams; API keys for `/metrics` only | no teams or roles; basic auth or OIDC | no (access is GitHub's) |
 | Add and edit monitors in a UI | yes | yes | no (edit the YAML) | no (edit the repo) |
-| Docker container checks | yes | yes | no | no |
-| Public status pages, incidents, subscribers | yes | status pages, incidents | status page | status site |
-| Prometheus `/metrics` | yes, per team | yes | yes | no |
-| Multi-location probes with quorum | yes | no | no | no |
-| SLOs, monitors as code | yes (`upsctl` diff / apply) | no | config is code | config is code |
+| Docker container checks | yes | yes | no | not documented |
+| Public status pages, incidents, subscribers | yes | status pages, incidents | status page, announcements | status site, incidents as GitHub issues |
+| Prometheus `/metrics` | yes, per team | yes | yes (off by default) | not documented |
+| Multi-location probes with quorum | yes | not documented | no quorum (external endpoints push results; remote instances are experimental) | not documented |
+| SLOs, monitors as code | yes (`upsctl` diff / apply) | no SLOs, no built-in monitors as code | config is code, no SLOs | config is code |
 
-Based on each project's documentation at the time of writing; check theirs for the current state.
-Uptime Kuma, Gatus and Upptime are good projects and a better fit when you want something smaller.
+Checked against each project's README, wiki and issue tracker on 2026-10-21; "not documented" means we
+did not find it there, not that it cannot be done. Parts of Gatus's README and Uptime Kuma 2.x release notes
+were not reviewed. Check their documentation for the current state. Uptime Kuma, Gatus and Upptime are good
+projects and a better fit when you want something smaller.
 
 ## Configuration
 

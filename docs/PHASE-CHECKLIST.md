@@ -92,7 +92,7 @@ smoke test at the time. ✔
 ## Phase 6: Multi-location probes — done
 
 - [x] `upsera-probe` binary (`cmd/upsera-probe`) and `probe` Docker target (`make docker-build-probe`; the
-  `upsera/upsera-probe` name is not published anywhere yet)
+  `ghcr.io/davidsugianto/upsera-probe` name is not published until the first release)
 - [x] Registration with a one-time token (24h, single use), exchanged for a credential kept in `/data`
 - [x] Probes pull assignments (every 15s, ETag) and push results over HTTPS, with an in-memory buffer if the
   server is unreachable
@@ -125,22 +125,39 @@ and stopping one probe fires "probe silent", not DOWN.
 **Done when:** `upsctl apply` from CI creates the same setup on a fresh instance — `TestPhase7UpsctlDoneWhen`. ✔
 (also `TestPhase7DegradedDoneWhen` and `TestPhase7SLODoneWhen`)
 
-## Phase 8: Packaging and launch — partly done (pulled forward in Phase 3)
+## Phase 8: Packaging and launch — mostly done, release not tagged (pulled forward in Phase 3)
 
 - [x] Multi-stage Dockerfile (node build, go build, distroless runtime, non-root)
 - [x] `time/tzdata` embedded so `TZ` works; ping uses unprivileged ICMP sockets (compose sets
   `net.ipv4.ping_group_range`)
 - [x] `deploy/docker-compose.yml` with the `local-db` profile, `.env.example` (`make env` generates `.env`),
-  container healthcheck (`/upsera healthcheck`)
+  container healthcheck (`/upsera healthcheck`); the image name is now `ghcr.io/davidsugianto/upsera`
 - [x] Backup notes (database + `APP_SECRET`): `docs/BACKUP.md`
 - [x] Optional Caddy profile for HTTPS (`deploy/Caddyfile`, `on_demand_tls ask → /api/tls-allowed`,
   `TRUSTED_PROXIES` on a fixed compose subnet). Smoke-tested locally with Caddy's local CA; a real
   Let's Encrypt certificate is not verified
 - [x] `/metrics` Prometheus endpoint (bearer API token, any scope, only the token's team's monitors)
-- [ ] Docs site
-- [~] README with a comparison table and screenshots — table done (competitor claims written from memory,
-  worth a check before launch); screenshots missing
-- [ ] Fresh server to working dashboard in under 5 minutes, verified on a clean host
+- [x] Docs site: VitePress in `site/` (13 pages, the env-var table checked against `internal/config`, no dead
+  links), `.github/workflows/docs.yml` deploys it to GitHub Pages from `master`. Not verified: the Pages
+  deployment itself (Pages must be switched on in the repository settings first)
+- [x] README with a comparison table and screenshots. The competitor claims were checked against each
+  project's README, wiki and issues on 2026-10-21 (one wrong claim fixed: Uptime Kuma has API keys for
+  `/metrics`); "not documented" cells mean not found. Not reviewed: part of Gatus's README and the Kuma 2.x
+  release notes. The README keeps the full reference until the docs site is live
+- [x] `make screenshots` (`tools/screenshots`): an isolated compose project, demo data from
+  `deploy/examples/demo.yaml` and `seed.sql`, Playwright; nine PNGs in `site/public/screenshots`. This was the
+  first real-browser look at the Phase 7 pages (DEGRADED, error budget card, SLO form, Reports): no console
+  errors or failed requests, in light and dark
+- [x] Release workflow `.github/workflows/release.yml` (tag `v*` or a manual dry run): the CI checks, linux and
+  darwin archives for amd64 and arm64 with `SHA256SUMS`, multi-arch GHCR images (`upsera`, `upsera-probe`,
+  `upsctl`), a GitHub Release (pre-release for `0.x`). Linted with actionlint and every action is pinned by
+  SHA. Not verified: the workflow has not run on GitHub, and buildx is not installed on the dev machine, so
+  the multi-arch build is untested. The arm64 half runs under QEMU and may be slow
+- [x] `deploy/smoke.sh` (waits, creates the first admin, logs in, prints the elapsed time): ran against an
+  isolated local stack, `OK` in 1 s once the stack was up
+- [x] `CONTRIBUTING.md` and `SECURITY.md`
+- [ ] Fresh server to working dashboard in under 5 minutes, verified on a clean host (the local smoke run
+  starts from images already built; it does not count)
 
 **Done when:** fresh server to working dashboard in under 5 minutes.
 
@@ -148,13 +165,15 @@ and stopping one probe fires "probe silent", not DOWN.
 
 ## Cross-cutting and release checklist
 
-- [ ] Push and watch the first GitHub CI run (`test` and `web` jobs); fix anything it finds (the ping test
-  depends on `net.ipv4.ping_group_range`)
-- [ ] Decide the licence before accepting outside contributions: MIT (current) or AGPL-3.0
-- [ ] Public v0.x release after Phase 5 (plan decision 6): the Phase 8 slice is in; still needs README
-  screenshots and a real-host check of the Caddy certificate path
-- [ ] Reserve the GitHub org, domain and Docker Hub namespace (plan decision 7)
-- [ ] v1.0 after Phase 8
+- [x] CI runs on GitHub: green on PR #1 (phase 7) and on `master` after the merge (the ping test depends on
+  `net.ipv4.ping_group_range`, which ubuntu-latest allows)
+- [x] Licence decided: MIT stays (AGPL-3.0 was the alternative; revisit only before a hosted offering)
+- [ ] Public v0.1.0 pre-release: tag `v0.1.0-rc.1` first, check the archives and images from a clean
+  directory, then tag `v0.1.0`. Needs: GitHub Pages switched on, private vulnerability reporting enabled, and
+  the three GHCR packages set to public after the first push
+- [ ] Reserve the GitHub org and domain (plan decision 7); Docker Hub is out of scope for now (images are on
+  GHCR only)
+- [ ] v1.0 after the clean-host check, a real certificate check and a multi-VPS probe check
 - [ ] Open review items to schedule: see `HANDOVER.md` §5 (auto-incident lifecycle, retention, claim batch,
   login limiter proxy trust, and the others)
 

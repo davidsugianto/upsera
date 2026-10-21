@@ -18,7 +18,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help build web server probe upsctl dev test test-short test-web lint fmt vet gen-api check \
-	env docker-build docker-build-probe up down logs ps restart clean
+	env docker-build docker-build-probe up down logs ps restart clean screenshots
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -107,3 +107,6 @@ ps: ## show stack status
 
 clean: ## remove build output (not the database volume; use `docker compose ... down -v` for that)
 	rm -rf bin web/dist/app web/tsconfig.tsbuildinfo
+
+screenshots: ## rebuild the docs screenshots in site/public/screenshots (throwaway Docker stack + Playwright)
+	tools/screenshots/run.sh

@@ -9,7 +9,7 @@ describe('probeRunCommand', () => {
     expect(cmd).toContain('-e SERVER_URL=https://up.example.com')
     expect(cmd).toContain('-e PROBE_TOKEN=upr_abc')
     expect(cmd).toContain('-v upsera-probe:/data')
-    expect(cmd.trim().endsWith('upsera/upsera-probe')).toBe(true)
+    expect(cmd.trim().endsWith('ghcr.io/davidsugianto/upsera-probe')).toBe(true)
   })
   it('flags plain http servers as needing ALLOW_INSECURE_HTTP', () => {
     expect(probeRunCommand('http://10.0.0.5:3080', 'upr_x')).toContain('-e ALLOW_INSECURE_HTTP=1')

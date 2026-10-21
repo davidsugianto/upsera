@@ -1,0 +1,113 @@
+# Demo spec behind the documentation screenshots (`make screenshots`). It
+# only uses reserved example domains and placeholder secrets, so it is safe to
+# apply to a throwaway instance:
+#   UPSERA_URL=http://localhost:3181 UPSERA_TOKEN=ups_... \
+#   UPSERA_DEMO_OPS_TOKEN=demo UPSERA_DEMO_SLACK_URL=https://hooks.example.org/services/demo \
+#   upsctl apply -f deploy/examples/demo.yaml
+# The long intervals keep the throwaway stack quiet: the screenshots script
+# loads 30 days of history for these monitors, it does not wait for checks.
+version: 1
+
+channels:
+  - name: ops-webhook
+    type: webhook
+    is_default: true
+    config:
+      url: https://hooks.example.org/upsera/ops
+      headers:
+        Authorization: Bearer ${UPSERA_DEMO_OPS_TOKEN}
+  - name: team-slack
+    type: slack
+    config:
+      webhook_url: ${UPSERA_DEMO_SLACK_URL}
+
+escalation_policies:
+  - name: default
+    steps:
+      - channels: [ops-webhook]
+        delay_s: 300
+      - channels: [team-slack]
+        delay_s: 900
+
+monitors:
+  - name: website
+    type: http
+    interval_s: 3600
+    timeout_s: 10
+    group_name: Public
+    tags: [web, production]
+    escalation_policy: default
+    config:
+      url: https://www.example.com/
+      accepted_status: ["200-299"]
+    slo:
+      target: 99.9
+      window_days: 30
+  - name: docs
+    type: keyword
+    interval_s: 3600
+    timeout_s: 10
+    group_name: Public
+    tags: [web]
+    config:
+      url: https://www.example.org/
+      accepted_status: ["200-299"]
+      keyword: Example Domain
+  - name: database
+    type: tcp
+    interval_s: 3600
+    timeout_s: 5
+    group_name: Core
+    tags: [core, production]
+    config:
+      host: www.example.com
+      port: 443
+  - name: dns
+    type: dns
+    interval_s: 3600
+    timeout_s: 5
+    group_name: Core
+    tags: [core]
+    config:
+      hostname: example.com
+      record_type: A
+  - name: nightly-backup
+    type: push
+    interval_s: 86400
+    timeout_s: 30
+    group_name: Core
+    tags: [batch]
+  - name: checkout-api
+    type: http
+    interval_s: 3600
+    timeout_s: 10
+    group_name: Core
+    tags: [web, production]
+    escalation_policy: default
+    config:
+      url: https://www.example.org/checkout
+      accepted_status: ["200-499"]
+    slo:
+      target: 99.9
+      window_days: 30
+
+status_pages:
+  - slug: demo
+    title: Example Cloud status
+    description: Live status of the Example Cloud services.
+    published: true
+    sections:
+      - name: Customer-facing
+        items:
+          - monitor: website
+            display_name: Website
+          - monitor: docs
+            display_name: Documentation
+      - name: Platform
+        items:
+          - monitor: checkout-api
+            display_name: Checkout API
+          - monitor: database
+            display_name: Database
+          - monitor: dns
+            display_name: DNS

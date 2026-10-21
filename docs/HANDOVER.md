@@ -1,6 +1,6 @@
-# Upsera handover: Phases 1–7 done, Phase 8 next
+# Upsera handover: Phases 1–8 built, first release not tagged
 
-Updated 2026-10-19 for the next session. Read this first, then `docs/upsera-build-plan.html`
+Updated 2026-10-21 for the next session. Read this first, then `docs/upsera-build-plan.html`
 (v0.5, the product plan; its "Build phases" section is the roadmap). `docs/PHASE-CHECKLIST.md` lists
 every task of every phase with its done / partial / not started status. `docs/handover-phase3.md` is the
 detailed snapshot written at the end of the Phase 3 session (dashboard internals, review checklist);
@@ -29,8 +29,9 @@ the first push is the first run of the `test` and `web` jobs, and the ping test 
 - Frontend in `web/`: React 19, Vite 8, TypeScript 5.9 (forced by `openapi-typescript` and
   `typescript-eslint`), Tailwind 4, react-router 8, TanStack Query 5, openapi-fetch, uPlot. It is
   embedded into the binary with `go:embed` (`web/web.go`).
-- Not done yet: Phase 8 (docs site, README screenshots,
-  clean-host timing; the Caddy profile, `/metrics` and backup notes are in). The Dockerfile, `deploy/docker-compose.yml` and `Makefile` came forward from Phase 8.
+- Phase 8 (packaging and launch) is built: docs site (`site/`), screenshots (`make screenshots`), release workflow,
+  GHCR image names, `deploy/smoke.sh`, `CONTRIBUTING.md`, `SECURITY.md`, a checked comparison table. Not done: the
+  first tag (`v0.1.0-rc.1`, then `v0.1.0`), the clean-host timing, a real Let's Encrypt certificate. Licence: MIT.
 
 ## 2. Running things
 
@@ -82,6 +83,9 @@ zsh does not word-split unquoted variables, BSD `sed -i` needs `''`.
 | `internal/api` | chi + huma v2. Session cookie + CSRF header, or `Bearer ups_...` team token. Routes by file: `monitors`, `channels`, `policies`, `alerts`, `maintenance`, `dashboard` (overview, uptime summary, events), `events` (SSE), `docker_hosts`, `status_pages` (pages, incidents, subscribers), `admin` (users, settings incl. SMTP), `teams`, `auth`, `audit`, `probes` (`/api/regions`, admin probe CRUD and registration tokens), `probe_protocol` (the unauthenticated register and bearer-authenticated assignments / results endpoints the agent calls). |
 | `internal/testutil` | `Store(t)` / `PostgresURL(t)` testcontainers helpers; `FakeSMTP(t)`. |
 | `web/` | React app; `web/web.go` embeds `web/dist` (SPA fallback, security headers). `src/api/schema.d.ts` is generated (`make gen-api`). |
+| `site/` | The docs site (VitePress, `npm run build` fails on dead links). Pages in `guide/`; `guide/backups.md` includes `docs/BACKUP.md`; screenshots come from `site/public/screenshots/`. Deployed by `.github/workflows/docs.yml` (Pages must be enabled in the repo settings). |
+| `tools/screenshots` | `make screenshots`: compose project `upsera-shots` on port 3181 (`deploy/.env` is read, but `DATABASE_URL`, `APP_SECRET` and `BASE_URL` are overridden by a generated compose override so a Supabase `.env` is never touched; `check-isolation.sh` tests that; the fixed subnet clashes with a running `upsera` stack), demo data (`deploy/examples/demo.yaml` through `upsctl`, `seed.sql` for 30 days of history and a real DEGRADED state), Playwright (pinned 1.64.1); fails on console errors or failed requests. |
+| `.github/workflows/release.yml` | Tag `v*` (or a manual dry run): CI checks, linux and darwin archives for amd64 and arm64 with `SHA256SUMS`, multi-arch GHCR images, a GitHub Release (pre-release for `0.x`). Actions pinned by SHA; only a tag can publish. |
 | `deploy/`, `Dockerfile`, `Makefile` | distroless runtime image (the server stage is the last stage, so a plain `docker build .` builds the server; `--target probe` builds the `upsera-probe` image with `/data` pre-created and owned by nonroot), compose (`upsera`, `postgres` under profile `local-db`, `docker-proxy`, optional Caddy `https` profile). |
 
 ### Contracts to keep stable
@@ -248,19 +252,40 @@ Phase 7:
 - [ ] `PUT .../slo` with unchanged values is audited (and `upsctl` avoids it by diffing); the SLO message wording of `upsctl`
   validation differs from the server's. `GET /api/token` looks the team name up through `ListMembers` + `ListTeamsForUser`
   because the store has no `GetTeam`.
-- [ ] No Phase 7 view or `upsctl` run has been verified in a real browser or against a deployed instance. The GitLab example
-  was only YAML-linted. The main web chunk is over 500 kB (code splitting is still open).
+- [ ] The Phase 7 pages were opened in a real browser by `make screenshots` (render and navigation only, no console errors;
+  nothing was saved through the SLO form there) and `upsctl apply` ran against a real container stack. Still unverified:
+  `upsctl` against a deployed public instance, and the GitLab example (only YAML-linted). The main web chunk is over
+  500 kB (code splitting is still open).
+
+Phase 8:
+- [ ] The release workflow has never run on GitHub. Buildx is not installed on the dev machine, so the multi-arch build is
+  untested; the arm64 half builds under QEMU (Node and Go stages), which may be slow. A cross-compiling Dockerfile
+  (`FROM --platform=$BUILDPLATFORM`, `GOOS=$TARGETOS`) was tried and **breaks the legacy builder** used here without
+  buildx, so it was not applied. Run a `workflow_dispatch` dry run first and look at the timings.
+- [ ] Before the first release: enable GitHub Pages (source: GitHub Actions) and private vulnerability reporting, and make
+  the three GHCR packages public after the first push.
+- [ ] The README still holds the full reference next to the docs site (two copies of the configuration and probe text).
+  Shorten it to links once the site is live.
+- [ ] The comparison table: part of Gatus's README and the Uptime Kuma 2.x notes were not read; "not documented" cells mean
+  not found, not absent. Re-check before a launch post.
+- [ ] `make screenshots` needs internet (the demo monitors check example.com and example.org once after a restart), and
+  the compose file's fixed subnet `172.29.0.0/24` clashes with a running `upsera` dev stack, so stop `make up` first. It
+  was built on a Mac with a non-English locale, and the script forces the SLO number inputs to text so the picture does
+  not show `99,9`.
+- [ ] The clean-host "under 5 minutes" check is not done: `deploy/smoke.sh` ran only against a local stack with the images
+  already built.
 
 Not verified: Chrome/Firefox really send a real Origin from the `same-origin` page; real SMTP and Caddy TLS;
 upgrading an existing database to migration 4 (and now 5); **a real multi-VPS deployment: probes on other
-hosts reaching the server over public HTTPS (TLS, proxies, clock skew, real latency)**; the `upsera/upsera-probe`
-image published to a registry (only built locally with `make docker-build-probe`).
+hosts reaching the server over public HTTPS (TLS, proxies, clock skew, real latency)**; the `ghcr.io/davidsugianto/upsera-probe`
+image published to a registry (only built locally with `make docker-build-probe`; the release workflow will publish it).
 
 ## 6. Next phases (from the plan)
 
-- **Phase 8 slice: done** (`deploy/Caddyfile` + compose `https` profile with a fixed `172.29.0.0/24`
-  subnet for `TRUSTED_PROXIES`, `GET /metrics` in `internal/api/metrics.go`, `docs/BACKUP.md`, README
-  comparison table). Still to do: smoke a real certificate on a public host, README screenshots, docs site.
+- **Phase 8 packaging and launch: built, not released.** Caddy profile, `/metrics`, backups, docs site, screenshots,
+  release workflow, smoke script, community files (see §3 and the Phase 8 list in §5). To do: merge, enable Pages and
+  vulnerability reporting, a release dry run, tag `v0.1.0-rc.1`, check the artefacts from a clean directory, tag
+  `v0.1.0`; later the clean-host timing, a real certificate, a multi-VPS probe check, then v1.0.
 - **Phase 6 Multi-location probes: done, `ffa41e3`** (see §4). `upsera-probe` binary/image, regions +
   quorum, per-region latency chart, "probe silent" alert, Administration → Probes.
 - **Phase 7 DEGRADED, SLOs and monitors as code: done** (see §4). Open: see the Phase 7 list in §5.
