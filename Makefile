@@ -3,6 +3,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BIN     ?= bin/upsera
 PROBE_BIN ?= bin/upsera-probe
+UPSCTL_BIN ?= bin/upsctl
 COMPOSE := docker compose -f deploy/docker-compose.yml --profile local-db
 
 # colima: point Docker and testcontainers at its socket when it exists and
@@ -16,7 +17,7 @@ endif
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help build web server probe dev test test-short test-web lint fmt vet gen-api check \
+.PHONY: help build web server probe upsctl dev test test-short test-web lint fmt vet gen-api check \
 	env docker-build docker-build-probe up down logs ps restart clean
 
 help: ## list targets
@@ -37,7 +38,10 @@ server: ## build the server binary (embeds whatever web/dist/app holds)
 probe: ## build the remote probe binary into bin/upsera-probe
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(PROBE_BIN) ./cmd/upsera-probe
 
-build: web server ## build dashboard + server into bin/upsera
+upsctl: ## build the monitors-as-code CLI into bin/upsctl
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(UPSCTL_BIN) ./cmd/upsctl
+
+build: web server upsctl ## build dashboard + server into bin/upsera, and bin/upsctl
 
 dev: web/node_modules ## Vite dev server on :5173 (proxies /api to a server on :3080)
 	npm --prefix web run dev

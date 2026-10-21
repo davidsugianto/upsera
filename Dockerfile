@@ -32,7 +32,23 @@ ENV DATA_DIR=/data
 VOLUME /data
 ENTRYPOINT ["/upsera-probe"]
 
-# 4. Server runtime (keep this the LAST stage so a plain `docker build .`
+# 4. upsctl, the monitors-as-code CLI (`docker build --target upsctl`). It
+# needs no dashboard, so it builds from the Go sources alone.
+FROM golang:1.26-alpine AS upsctl-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/upsctl ./cmd/upsctl
+COPY internal/upsctl ./internal/upsctl
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/upsctl ./cmd/upsctl
+
+FROM gcr.io/distroless/static-debian12:nonroot AS upsctl
+COPY --from=upsctl-build /out/upsctl /upsctl
+USER nonroot:nonroot
+ENTRYPOINT ["/upsctl"]
+
+# 5. Server runtime (keep this the LAST stage so a plain `docker build .`
 # builds the server): distroless, non-root. Ping uses unprivileged ICMP sockets, so
 # no CAP_NET_RAW is needed (the host must allow it via ping_group_range,
 # which Docker does by default).

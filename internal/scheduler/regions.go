@@ -28,7 +28,11 @@ import (
 //  2. fewer regions reporting than the quorum    → PENDING "probe silent: …"
 //     (a silent probe never opens a down alert)
 //  3. fresh DOWN + fresh PENDING >= quorum       → PENDING
-//  4. otherwise                                  → UP
+//  4. otherwise, any fresh region DEGRADED       → DEGRADED
+//  5. otherwise                                  → UP
+//
+// A region is DEGRADED when it is UP but slow (latency.go); DOWN and
+// PENDING always win over it, and a stale DEGRADED region is ignored.
 //
 // A region is fresh when its last result is at most 2*IntervalS old. A region
 // that has not reported yet is unknown until the grace period (2*IntervalS
@@ -59,6 +63,8 @@ type aggregate struct {
 	silent   bool // PENDING because too few regions are reporting
 	failures int
 	msg      string
+	// degRegion is the first fresh DEGRADED region (status DEGRADED).
+	degRegion string
 }
 
 // graceEnd is when regions that have not reported (or only have old data)
@@ -80,7 +86,7 @@ func (s *Scheduler) aggregateLocked(m model.Monitor, regs map[string]model.Regio
 	inGrace := now.Before(s.graceEnd(m))
 
 	var nFresh, nUnknown, nDown, nPending, downFail, pendFail int
-	var downMsg, pendMsg string
+	var downMsg, pendMsg, degRegion string
 	var notReporting []string
 	for _, name := range names {
 		rs, ok := regs[name]
@@ -100,6 +106,10 @@ func (s *Scheduler) aggregateLocked(m model.Monitor, regs map[string]model.Regio
 				}
 				nPending++
 				pendFail = max(pendFail, rs.ConsecutiveFailures)
+			case model.StatusDegraded:
+				if degRegion == "" {
+					degRegion = name
+				}
 			}
 		case inGrace:
 			nUnknown++
@@ -124,17 +134,21 @@ func (s *Scheduler) aggregateLocked(m model.Monitor, regs map[string]model.Regio
 			msg, fails = downMsg, max(downFail, pendFail)
 		}
 		return aggregate{decided: true, status: model.StatusPending, failures: fails, msg: msg}
+	case degRegion != "":
+		return aggregate{decided: true, status: model.StatusDegraded, degRegion: degRegion}
 	}
 	return aggregate{decided: true, status: model.StatusUp}
 }
 
 // commitLocked stores the monitor state implied by agg (and regs) at time at
 // and emits the resulting transition; hb, if set, is buffered with the new
-// status. Undecided aggregates leave the status alone and only refresh the
-// stored region states (hb is the caller's to buffer then). Callers hold
-// s.mu.
+// status. region is the region whose result led here ("" for a sweep): a
+// transition out of DEGRADED carries its latency, one into DEGRADED that of
+// agg.degRegion. Undecided aggregates leave the status alone and only
+// refresh the stored region states (hb is the caller's to buffer then).
+// Callers hold s.mu.
 func (s *Scheduler) commitLocked(m model.Monitor, regs map[string]model.RegionState, agg aggregate,
-	at time.Time, tlsAt *time.Time, msg string, hb *model.Heartbeat) {
+	at time.Time, tlsAt *time.Time, msg, region string, hb *model.Heartbeat) {
 
 	id := m.ID
 	prev, havePrev := s.states[id]
@@ -179,6 +193,10 @@ func (s *Scheduler) commitLocked(m model.Monitor, regs map[string]model.RegionSt
 	if tr != nil {
 		tr.TeamID = m.TeamID
 	}
+	if agg.status == model.StatusDegraded {
+		region = agg.degRegion
+	}
+	s.latencyInfoLocked(tr, region)
 	s.emit(tr)
 }
 
@@ -278,8 +296,12 @@ func (s *Scheduler) ingest(probeID int64, region string, r model.RegionResult, m
 	}
 
 	s.leaveMaintenanceLocked(id, now)
+	obs := r.Status
+	if obs == model.StatusUp {
+		obs = s.latencyObsLocked(m, region, probeID, r.Time, r.LatencyMs, hasLast && last.Status == model.StatusDegraded)
+	}
 	rns := nextState(model.MonitorState{Status: last.Status, ConsecutiveFailures: last.ConsecutiveFailures},
-		hasLast, r.Status, r.Time, m.Retries)
+		hasLast, obs, r.Time, m.Retries)
 	rs := model.RegionState{
 		Status:              rns.Status,
 		ConsecutiveFailures: rns.ConsecutiveFailures,
@@ -294,10 +316,10 @@ func (s *Scheduler) ingest(probeID int64, region string, r model.RegionResult, m
 
 	agg := s.aggregateLocked(m, next, now)
 	tmsg := agg.msg
-	if agg.status == model.StatusUp || (!agg.silent && rs.Status != model.StatusUp) {
+	if agg.status == model.StatusUp || agg.status == model.StatusDegraded || (!agg.silent && rs.Status != model.StatusUp) {
 		tmsg = msg
 	}
-	s.commitLocked(m, next, agg, r.Time, r.TLSExpiresAt, tmsg, &hb)
+	s.commitLocked(m, next, agg, r.Time, r.TLSExpiresAt, tmsg, region, &hb)
 	if !agg.decided {
 		// No verdict yet (startup grace): history only.
 		hb.Status = r.Status
@@ -370,7 +392,7 @@ func (s *Scheduler) reevaluate(id int64, allowNewDown bool) {
 	if agg.status == model.StatusDown && !allowNewDown {
 		return
 	}
-	s.commitLocked(m, s.regions[id], agg, now, nil, agg.msg, nil)
+	s.commitLocked(m, s.regions[id], agg, now, nil, agg.msg, "", nil)
 }
 
 // syncRegionsLocked reconciles the region bookkeeping of m after an Upsert:

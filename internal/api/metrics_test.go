@@ -63,6 +63,7 @@ func TestMetrics(t *testing.T) {
 
 	upID := monitor(teamID, `web "prod"`, map[string]any{"group_name": "edge"})
 	downID := monitor(teamID, "db", nil)
+	slowID := monitor(teamID, "slow", nil)
 	pausedID := monitor(teamID, "paused one", map[string]any{"paused": true})
 	_ = pausedID
 	otherMonitor := monitor(otherID, "other team secret", nil)
@@ -71,6 +72,7 @@ func TestMetrics(t *testing.T) {
 	expires := time.Now().Add(48 * time.Hour)
 	runner.states[upID] = model.MonitorState{MonitorID: upID, Status: model.StatusUp, LastCheckAt: time.Now(), TLSExpiresAt: &expires}
 	runner.states[downID] = model.MonitorState{MonitorID: downID, Status: model.StatusDown, LastCheckAt: time.Now()}
+	runner.states[slowID] = model.MonitorState{MonitorID: slowID, Status: model.StatusDegraded, LastCheckAt: time.Now()}
 
 	probe, err := st.LocalProbeID(ctx)
 	if err != nil {
@@ -142,6 +144,10 @@ func TestMetrics(t *testing.T) {
 				fmt.Sprintf(`upsera_monitor_paused{monitor_id="%d",monitor="paused one",type="tcp",group=""} 1`, pausedID),
 				fmt.Sprintf(`upsera_monitor_paused{monitor_id="%d",monitor="db",type="tcp",group=""} 0`, downID),
 				fmt.Sprintf(`upsera_monitor_cert_expiry_seconds{monitor_id="%d"`, upID),
+				// DEGRADED is up (slow), with its own status value.
+				"0 down, 1 up, 2 pending, 3 maintenance, 4 degraded",
+				fmt.Sprintf(`upsera_monitor_up{monitor_id="%d",monitor="slow",type="tcp",group=""} 1`, slowID),
+				fmt.Sprintf(`upsera_monitor_status{monitor_id="%d",monitor="slow",type="tcp",group=""} 4`, slowID),
 			} {
 				if !strings.Contains(out, want) {
 					t.Errorf("missing %q in:\n%s", want, out)

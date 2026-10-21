@@ -34,6 +34,7 @@ import (
 	"github.com/davidsugianto/upsera/internal/probes"
 	"github.com/davidsugianto/upsera/internal/scheduler"
 	"github.com/davidsugianto/upsera/internal/secret"
+	"github.com/davidsugianto/upsera/internal/slo"
 	"github.com/davidsugianto/upsera/internal/statuspage"
 	"github.com/davidsugianto/upsera/internal/store"
 	"github.com/davidsugianto/upsera/web"
@@ -41,6 +42,14 @@ import (
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
+
+// tweakSchedulerOptions is a test hook (nil in production): end-to-end
+// tests use it to shorten the scheduler's fixed DEGRADED timings.
+var tweakSchedulerOptions func(*scheduler.Options)
+
+// tweakSLOOptions is a test hook (nil in production): end-to-end tests use
+// it to scale the SLO evaluator's burn-rate windows and tick down.
+var tweakSLOOptions func(*slo.Options)
 
 func main() {
 	if len(os.Args) > 1 {
@@ -183,18 +192,25 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	chk := checker.New(policy)
 	chk.SetDockerHosts(dreg)
 
-	sched := scheduler.New(st, chk, scheduler.Options{
+	schedOpts := scheduler.Options{
 		ProbeID:       probeID,
 		MaxConcurrent: cfg.MaxConcurrentChecks,
 		BufferSize:    cfg.HeartbeatBufferSize,
 		FlushInterval: cfg.FlushInterval,
 		Logger:        log.With("component", "scheduler"),
 		Maintenance:   mreg,
+		// DEGRADED detection: 7-day latency baselines, reloaded hourly in
+		// the background.
+		Baselines: st,
 		OnTransition: func(t model.Transition) {
 			engine.Publish(t)
 			hub.Publish(t.TeamID, t)
 		},
-	})
+	}
+	if tweakSchedulerOptions != nil {
+		tweakSchedulerOptions(&schedOpts)
+	}
+	sched := scheduler.New(st, chk, schedOpts)
 	// The scheduler outlives ctx: it is stopped explicitly below so buffered
 	// heartbeats are flushed after the HTTP server has drained.
 	schedCtx, cancelSched := context.WithCancel(context.WithoutCancel(ctx))
@@ -211,6 +227,15 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		Monitors: monitors, Channels: channels, Policies: policies, OpenAlerts: openAlerts, CertKeys: certKeys,
 	}, sched)
 	log.Info("scheduler started", "monitors", len(monitors))
+
+	// SLO burn-rate alerts: a loop of its own that reads the store and only
+	// queues notifications in the engine.
+	sloOpts := slo.Options{Store: st, Notifier: engine, Loc: loc, Logger: log.With("component", "slo")}
+	if tweakSLOOptions != nil {
+		tweakSLOOptions(&sloOpts)
+	}
+	sloEval := slo.New(sloOpts)
+	sloEval.Start(engineCtx)
 
 	// Remote probes: the registry authenticates them from memory and reports
 	// the ones that go silent. Its callbacks only queue work in the engine.
@@ -280,6 +305,7 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 		if !errors.Is(err, http.ErrServerClosed) {
 			cancelSched()
 			cancelEngine()
+			sloEval.Stop()
 			cancelPages()
 			return fmt.Errorf("http server: %w", err)
 		}
@@ -297,6 +323,8 @@ func run(ctx context.Context, cfg config.Config, log *slog.Logger, ln net.Listen
 	if err := probeReg.Shutdown(shutdownCtx); err != nil {
 		log.Warn("probe registry shutdown", "err", err)
 	}
+	// Before the engine, so its last notifications are still sent.
+	sloEval.Stop()
 	if err := engine.Shutdown(shutdownCtx); err != nil {
 		log.Warn("alerting shutdown", "err", err)
 	}

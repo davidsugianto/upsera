@@ -1,0 +1,64 @@
+# GitLab CI for monitors as code: `upsctl diff` on merge requests, `upsctl
+# apply` on the default branch. Copy into .gitlab-ci.yml (or include it) in
+# the repository that holds upsera.yaml.
+#
+# CI/CD variables (Settings > CI/CD > Variables). Merge request pipelines on
+# unprotected branches do not receive protected variables, so the two jobs use
+# different tokens:
+#   UPSERA_URL                        e.g. https://upsera.example.com (not protected)
+#   UPSCTL_READ_TOKEN                 team token with read scope, masked, NOT
+#                                     protected: used by `upsctl diff` on merge requests
+#   UPSCTL_WRITE_TOKEN                team token with write scope, masked AND
+#                                     protected: used by `upsctl apply` on the default branch
+#   UPSERA_ONCALL_TELEGRAM_BOT_TOKEN  one per ${...} placeholder in the spec, masked AND
+#                                     protected (apply sends them to the server)
+# `diff` never compares secrets, so on merge requests the diff job fills every
+# placeholder that has no value with `{}` (which also satisfies a JSON-object
+# variable such as webhook headers) instead of exposing the real secrets. This
+# includes placeholders for non-secret fields: if you use one of those, define
+# it as a plain (unprotected) CI variable so `diff` sees its real value.
+# upsctl only expands UPSERA_* variables (never UPSERA_TOKEN or UPSERA_URL), which is
+# why the two API tokens are named UPSCTL_*: a spec can then not read them.
+#
+# GitLab runs `script` lines in a shell, which the distroless `upsctl` image
+# (`docker build --target upsctl .`) does not have, so the jobs install
+# upsctl with `go install`. Pin a release tag instead of @latest in real use.
+# To use the image instead, copy /upsctl from it into an image of your own
+# that has a shell.
+
+variables:
+  UPSCTL_SPEC: upsera.yaml
+
+.upsctl:
+  image: golang:1.26-alpine
+  before_script:
+    - CGO_ENABLED=0 go install github.com/davidsugianto/upsera/cmd/upsctl@latest
+
+upsctl diff:
+  extends: .upsctl
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    UPSERA_TOKEN: $UPSCTL_READ_TOKEN
+  script:
+    - |
+      for v in $(grep -o '\${UPSERA_[A-Z0-9_]*}' "$UPSCTL_SPEC" | tr -d '${}' | sort -u); do
+        eval "[ -n \"\${$v+x}\" ] || export $v='{}'"
+      done
+    - upsctl diff -f "$UPSCTL_SPEC"
+  # Exit code 2 means "changes pending": the job passes with a warning so
+  # the merge request shows that merging will change the live setup.
+  allow_failure:
+    exit_codes: [2]
+
+upsctl apply:
+  extends: .upsctl
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  resource_group: upsera
+  variables:
+    UPSERA_TOKEN: $UPSCTL_WRITE_TOKEN
+  script:
+    - upsctl apply -f "$UPSCTL_SPEC" --yes

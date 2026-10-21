@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -173,6 +174,20 @@ func isRedactedOrMissing(m map[string]json.RawMessage, field string) bool {
 	return false
 }
 
+// channelUnchanged reports whether saving next over stored would change
+// nothing: same type, name and default flag, and a decryptable stored config
+// equal (as JSON values) to next's merged config.
+func channelUnchanged(stored, next model.Channel) bool {
+	if stored.DecryptErr != "" || stored.Type != next.Type || stored.Name != next.Name || stored.IsDefault != next.IsDefault {
+		return false
+	}
+	var a, b any
+	if json.Unmarshal(stored.Config, &a) != nil || json.Unmarshal(next.Config, &b) != nil {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 type channelOutput struct {
 	Body channelBody
 }
@@ -273,6 +288,11 @@ func registerChannelRoutes(api huma.API, d Deps) {
 		}
 		c := model.Channel{
 			ID: in.ChannelID, TeamID: in.TeamID, Type: existing.Type, Name: name, Config: cfg, IsDefault: in.Body.IsDefault,
+		}
+		// An unchanged channel (upsctl apply re-sends every secret) is not
+		// written: no updated_at bump, no ack listener re-sync, no audit.
+		if channelUnchanged(existing, c) {
+			return &channelOutput{Body: toChannelBody(existing)}, nil
 		}
 		updated, err := d.Store.UpdateChannel(ctx, c)
 		if err != nil {

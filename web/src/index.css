@@ -60,3 +60,18 @@
     @apply text-accent-ink hover:underline;
   }
 }
+
+/* Print: just the page content, black on white. Navigation, buttons and
+   form controls are hidden; tables get visible borders. */
+@media print {
+  :root, :root[data-theme="dark"] {
+    color-scheme: light;
+    --bg: #FFFFFF; --surface: #FFFFFF; --ink: #000000; --muted: #333333; --line: #000000;
+  }
+  html, body { background: #FFFFFF; color: #000000; }
+  aside, nav, header, button, input, select { display: none !important; }
+  .card { border: 0; box-shadow: none; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #000000; color: #000000; }
+  caption { color: #000000; }
+}

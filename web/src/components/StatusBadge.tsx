@@ -1,8 +1,27 @@
 import type { Status } from '../api/types'
 
-const bg: Record<Status, string> = { up: 'bg-up', down: 'bg-down', pending: 'bg-pend', maintenance: 'bg-maint' }
-const text: Record<Status, string> = { up: 'text-up', down: 'text-down', pending: 'text-pend', maintenance: 'text-maint' }
-const label: Record<Status, string> = { up: 'Up', down: 'Down', pending: 'Pending', maintenance: 'Maintenance' }
+// degraded (up but slow) shares pending's amber but keeps its own label.
+const bg: Record<Status, string> = {
+  up: 'bg-up',
+  down: 'bg-down',
+  pending: 'bg-pend',
+  maintenance: 'bg-maint',
+  degraded: 'bg-pend',
+}
+const text: Record<Status, string> = {
+  up: 'text-up',
+  down: 'text-down',
+  pending: 'text-pend',
+  maintenance: 'text-maint',
+  degraded: 'text-pend',
+}
+const label: Record<Status, string> = {
+  up: 'Up',
+  down: 'Down',
+  pending: 'Pending',
+  maintenance: 'Maintenance',
+  degraded: 'Degraded',
+}
 
 /** statusBg is the background utility for a status (null = no data). */
 export function statusBg(s: Status | null | undefined): string {

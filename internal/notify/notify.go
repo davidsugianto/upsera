@@ -31,8 +31,20 @@ type Event struct {
 	CertExpiresAt time.Time
 	CertDaysLeft  int
 	FlapCount     int
-	// Region is the probe region of probe_silent / probe_recovered events.
+	// Region is the probe region of probe_silent / probe_recovered events,
+	// and the slow (or recovered) region of degraded / latency_recovered.
 	Region string
+	// LatencyP95Ms and BaselineMs are the region's recent p95 latency and
+	// its 7-day baseline, for degraded / latency_recovered.
+	LatencyP95Ms int32
+	BaselineMs   int32
+	// SLOLevel ("fast" or "slow"), SLOTarget (percent), BurnRate and
+	// BudgetConsumed (share of the window's budget, -1 = unknown) describe
+	// slo_burn / slo_burn_recovered.
+	SLOLevel       string
+	SLOTarget      float64
+	BurnRate       float64
+	BudgetConsumed float64
 	// Ackable adds an Acknowledge button where the channel supports one.
 	Ackable bool
 }

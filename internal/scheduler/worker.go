@@ -126,7 +126,9 @@ func (s *Scheduler) runPushLoop(ctx context.Context, m model.Monitor, resetCh <-
 }
 
 // recordHeartbeat applies one observation (StatusUp, StatusDown or
-// StatusMaintenance) of monitor id at time at: it runs the state machine
+// StatusMaintenance) of monitor id at time at: an UP observation of a
+// remote-capable monitor first goes through DEGRADED detection (as region
+// "local", see latency.go). It then runs the state machine
 // against the cached state, buffers a heartbeat carrying the resulting
 // state for the flusher, updates (and dirties) the in-memory state and
 // emits a Transition when the state or the flap state changed. It returns
@@ -147,6 +149,10 @@ func (s *Scheduler) recordHeartbeat(id int64, at time.Time, obs model.Status, la
 		return s.states[id]
 	}
 	prev, havePrev := s.states[id]
+	if obs == model.StatusUp {
+		obs = s.latencyObsLocked(m, model.LocalRegion, s.opts.ProbeID, at, latencyMs,
+			havePrev && prev.Status == model.StatusDegraded)
+	}
 	ns := nextState(prev, havePrev, obs, at, m.Retries)
 	ns.MonitorID = id
 	if tlsAt != nil {
@@ -166,6 +172,7 @@ func (s *Scheduler) recordHeartbeat(id int64, at time.Time, obs model.Status, la
 	if tr != nil {
 		tr.TeamID = m.TeamID
 	}
+	s.latencyInfoLocked(tr, model.LocalRegion)
 	s.emit(tr)
 	return ns
 }
@@ -203,8 +210,11 @@ func (s *Scheduler) storeStateLocked(prev model.MonitorState, havePrev bool, ns 
 		from = prev.Status
 	}
 
+	// DEGRADED counts as UP here: DOWN -> DEGRADED is a recovery, and
+	// UP <-> DEGRADED is not a change at all.
 	flaps := s.flaps[id]
-	if (ns.Status == model.StatusDown && from != model.StatusDown) || (from == model.StatusDown && ns.Status == model.StatusUp) {
+	recovered := ns.Status == model.StatusUp || ns.Status == model.StatusDegraded
+	if (ns.Status == model.StatusDown && from != model.StatusDown) || (from == model.StatusDown && recovered) {
 		flaps = append(flaps, at)
 	}
 	cutoff := at.Add(-flapWindow)

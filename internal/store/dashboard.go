@@ -40,7 +40,7 @@ func (s *Store) ListRecentHeartbeats(ctx context.Context, teamID int64, perMonit
 // monitors (only monitorID's when it is non-zero), keyed by monitor id.
 func (s *Store) CountUptimeSince(ctx context.Context, teamID, monitorID int64, since time.Time) (map[int64]model.UptimeCount, error) {
 	return collectUptime(s.pool.Query(ctx, `
-		SELECT h.monitor_id, count(*) FILTER (WHERE h.status <> 3), count(*) FILTER (WHERE h.status IN (1, 2))
+		SELECT h.monitor_id, count(*) FILTER (WHERE h.status <> 3), count(*) FILTER (WHERE h.status IN (1, 2, 4))
 		FROM upsera.heartbeats h JOIN upsera.monitors m ON m.id = h.monitor_id
 		WHERE m.team_id = $1 AND ($2::bigint = 0 OR h.monitor_id = $2) AND h.time >= $3
 		GROUP BY h.monitor_id`, teamID, monitorID, since))

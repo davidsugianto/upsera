@@ -159,9 +159,9 @@ func pageMonitorIDs(items []model.StatusPageItem) []int64 {
 }
 
 // banner summarises the live monitor states of the page's items. PENDING
-// counts as operational.
+// counts as operational; DEGRADED (slow but up) says so, without numbers.
 func (s *Service) banner(items []model.StatusPageItem) bannerView {
-	var down, maint, known int
+	var down, maint, degraded, known int
 	for _, it := range items {
 		st, ok := s.opts.States.State(it.MonitorID)
 		if !ok {
@@ -173,6 +173,8 @@ func (s *Service) banner(items []model.StatusPageItem) bannerView {
 			down++
 		case model.StatusMaintenance:
 			maint++
+		case model.StatusDegraded:
+			degraded++
 		}
 	}
 	switch {
@@ -180,6 +182,8 @@ func (s *Service) banner(items []model.StatusPageItem) bannerView {
 		return bannerView{"down", "Major outage"}
 	case down > 0:
 		return bannerView{"warn", "Partial outage"}
+	case degraded > 0:
+		return bannerView{"degraded", "Degraded performance"}
 	case maint > 0:
 		return bannerView{"maint", "Under maintenance"}
 	case known == 0:
@@ -214,6 +218,8 @@ func (s *Service) itemView(it model.StatusPageItem, days []model.UptimeDay, from
 			v.StateClass, v.StateLabel = "down", "Outage"
 		case model.StatusMaintenance:
 			v.StateClass, v.StateLabel = "maint", "Maintenance"
+		case model.StatusDegraded:
+			v.StateClass, v.StateLabel = "degraded", "Degraded performance"
 		default:
 			v.StateClass, v.StateLabel = "up", "Operational"
 		}

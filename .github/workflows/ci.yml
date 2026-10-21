@@ -27,6 +27,8 @@ jobs:
         run: go build ./...
       - name: build probe
         run: go build ./cmd/upsera-probe
+      - name: build upsctl
+        run: go build ./cmd/upsctl
       # Integration tests start Postgres 17 with testcontainers (Docker is
       # preinstalled on ubuntu-latest). The ping checker test uses
       # unprivileged ICMP sockets, which Ubuntu allows via ping_group_range.

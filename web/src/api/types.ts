@@ -2,7 +2,8 @@ import type { components } from './schema'
 
 type S = components['schemas']
 
-export type Status = 'up' | 'down' | 'pending' | 'maintenance'
+/** degraded: up but slow (a region's recent p95 latency is far above its baseline). */
+export type Status = 'up' | 'down' | 'pending' | 'maintenance' | 'degraded'
 export type Role = S['MeTeam']['role']
 export type MonitorType = S['MonitorBody']['type']
 export type ChannelType = S['ChannelBody']['type']
@@ -83,3 +84,14 @@ export type MonitorsChangedEvent = { monitor_id: number; deleted: boolean }
 
 /** SSE `alert` events carry an Alert. */
 export type AlertFilter = { state: 'open' | 'resolved' | 'all'; monitorId?: number }
+
+export type SLO = S['SloBody']
+export type SLOStatus = S['SloStatusBody']
+export type SLOPoint = S['SloPointBody']
+/** SLODetail is the GET/PUT …/slo answer: the SLO, its status and its daily series. */
+export type SLODetail = S['SloOutputBody']
+/** SLOInput is the PUT …/slo body; every field is sent (the server defaults are 30 / 14.4 / 6). */
+export type SLOInput = Omit<S['SloInputBody'], '$schema'>
+export type SLOFiring = S['SloStatusBody']['firing']
+export type SLAReport = S['SlaReportOutputBody']
+export type SLARow = S['SlaRowBody']

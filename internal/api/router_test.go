@@ -1077,6 +1077,7 @@ func TestOpenAPIEnums(t *testing.T) {
 
 	wantStatuses := []string{
 		model.StatusDown.String(), model.StatusUp.String(), model.StatusPending.String(), model.StatusMaintenance.String(),
+		model.StatusDegraded.String(),
 	}
 	if got := schemaEnum("MonitorStateBody", "status"); !slicesEqual(got, wantStatuses) {
 		t.Fatalf("MonitorStateBody.status enum = %v, want %v", got, wantStatuses)

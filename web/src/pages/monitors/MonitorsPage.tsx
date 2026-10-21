@@ -14,6 +14,7 @@ const statuses: { key: Status; label: string }[] = [
   { key: 'up', label: 'Up' },
   { key: 'down', label: 'Down' },
   { key: 'pending', label: 'Pending' },
+  { key: 'degraded', label: 'Degraded' },
   { key: 'maintenance', label: 'Maintenance' },
 ]
 
@@ -35,7 +36,7 @@ export function MonitorsPage() {
   }, [overview.data])
 
   const counts = useMemo(() => {
-    const c: Record<Status, number> = { up: 0, down: 0, pending: 0, maintenance: 0 }
+    const c: Record<Status, number> = { up: 0, down: 0, pending: 0, maintenance: 0, degraded: 0 }
     for (const m of list) if (m.state) c[m.state.status]++
     return c
   }, [list])
@@ -157,7 +158,10 @@ export function MonitorsPage() {
 function MonitorRow({ t, m, o }: { t: number; m: Monitor; o?: OverviewItem }) {
   const beats = o?.heartbeats ?? []
   const latest = beats.length > 0 ? beats[beats.length - 1] : undefined
-  const latency = latest && (latest.status === 'up' || latest.status === 'pending') ? `${latest.latency_ms} ms` : '—'
+  const latency =
+    latest && (latest.status === 'up' || latest.status === 'pending' || latest.status === 'degraded')
+      ? `${latest.latency_ms} ms`
+      : '—'
   return (
     <Link to={`/t/${t}/monitors/${m.id}`} className="flex flex-wrap items-center gap-4 px-4 py-3 hover:bg-line/40">
       <StatusDot status={m.state?.status} />

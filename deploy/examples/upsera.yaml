@@ -1,0 +1,56 @@
+# Sample upsctl spec (monitors as code). Check it with
+#   UPSERA_URL=https://upsera.example.com UPSERA_TOKEN=ups_... \
+#   UPSERA_ONCALL_TELEGRAM_BOT_TOKEN=123456:... upsctl diff -f deploy/examples/upsera.yaml
+# Entries refer to each other by name. Secrets are ${ENV} placeholders that
+# upsctl expands from the environment (UPSERA_* names only); $$ is a literal $.
+version: 1
+
+channels:
+  - name: oncall-telegram
+    type: telegram
+    is_default: true
+    config:
+      chat_id: "-1001234567890"
+      bot_token: ${UPSERA_ONCALL_TELEGRAM_BOT_TOKEN}
+
+escalation_policies:
+  - name: default
+    steps:
+      - channels: [oncall-telegram]
+        delay_s: 600
+
+monitors:
+  - name: database
+    type: tcp
+    interval_s: 60
+    tags: [core]
+    config:
+      host: db.example.com
+      port: 5432
+  - name: api
+    type: http
+    interval_s: 30
+    timeout_s: 10
+    parent: database
+    escalation_policy: default
+    group_name: edge
+    config:
+      url: https://api.example.com/health
+      accepted_status: ["200-299"]
+    # 99.9% of checks up over 30 days; burn-rate alerts use the defaults.
+    slo:
+      target: 99.9
+      window_days: 30
+
+status_pages:
+  - slug: example
+    title: Example status
+    description: Live status of the Example services.
+    published: true
+    sections:
+      - name: Core services
+        items:
+          - monitor: api
+            display_name: Public API
+          - monitor: database
+            display_name: Database

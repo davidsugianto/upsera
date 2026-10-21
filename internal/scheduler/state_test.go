@@ -46,6 +46,15 @@ func TestNextState(t *testing.T) {
 			{model.StatusDown, model.StatusPending, 1, 0},
 			{model.StatusUp, model.StatusUp, 0, 1},
 		}},
+		{"degraded keeps since, failure from degraded starts pending", 1, nil, []step{
+			{model.StatusUp, model.StatusUp, 0, 0},
+			{model.StatusDegraded, model.StatusDegraded, 0, 1},
+			{model.StatusDegraded, model.StatusDegraded, 0, 1},
+			{model.StatusDown, model.StatusPending, 1, 3},
+			{model.StatusDown, model.StatusDown, 2, 3},
+			{model.StatusDegraded, model.StatusDegraded, 0, 5},
+			{model.StatusUp, model.StatusUp, 0, 6},
+		}},
 		{"maintenance to down starts at failures 1", 1,
 			&model.MonitorState{Status: model.StatusMaintenance, Since: t0.Add(-time.Hour), ConsecutiveFailures: 5},
 			[]step{

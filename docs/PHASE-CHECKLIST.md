@@ -1,7 +1,7 @@
 # Upsera phase checklist
 
 Task list for every phase of the build plan ([`upsera-build-plan.html`](upsera-build-plan.html), "Build
-phases"), checked against what is in the repo. Status as of 2026-10-11 (HEAD `ffa41e3`).
+phases"), checked against what is in the repo. Status as of 2026-10-19 (Phase 7 in the working tree on top of `b2cf403`).
 Read [`HANDOVER.md`](HANDOVER.md) for how things work and what is still open; this file is only the
 checklist. Update it in the same commit that finishes a task.
 
@@ -15,7 +15,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 | 4 | Docker monitoring | done | `9b37dc9` |
 | 5 | Status pages | done | `a0b8ea2` |
 | 6 | Multi-location probes | done | `ffa41e3` |
-| 7 | SLOs and monitors as code | not started | — |
+| 7 | SLOs and monitors as code | done | see `git log` |
 | 8 | Packaging and launch | partly done (Docker, Caddy, `/metrics`, backup notes) | `1d16565` + packaging slice |
 
 ---
@@ -37,7 +37,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 
 ## Phase 2: Alerting engine — done
 
-- [x] State machine (UP / PENDING / DOWN / MAINTENANCE; DEGRADED reserved, detection is Phase 7), event bus
+- [x] State machine (UP / PENDING / DOWN / MAINTENANCE; DEGRADED added in Phase 7), event bus
 - [x] Dispatcher with per-channel queues, retries, dedupe, log
 - [x] Telegram, Discord, Slack, SMTP, generic webhook, plus test-send endpoint and cert-expiry events
 - [x] Escalation policies
@@ -108,18 +108,22 @@ smoke test at the time. ✔
 **Done when:** firewalling the target from one probe's region fires no alert, from two regions fires DOWN,
 and stopping one probe fires "probe silent", not DOWN.
 
-## Phase 7: SLOs and monitors as code — not started
+## Phase 7: SLOs and monitors as code — done
 
-- [ ] SLO targets, error budget view
-- [ ] Multi-window burn-rate alerts
-- [ ] Monthly SLA report
-- [ ] DEGRADED detection from a rolling per-region p95 baseline (3× the 7-day baseline over 15 minutes)
-- [ ] `upsctl` CLI (`cmd/upsctl`, cobra): `export`, `diff`, `apply` for monitors, channels, policies and
-  status pages
-- [ ] `export` writes channel secrets as `${ENV_VAR}` placeholders; `apply` resolves them from the environment
-- [ ] Example GitLab CI job
+- [x] SLO targets, error budget view (monitor form, error budget card with burndown, `GET/PUT/DELETE .../monitors/{id}/slo`,
+  `GET .../slos`)
+- [x] Multi-window burn-rate notifications: fast (1 h + 5 min) and slow (6 h + 30 min), notification only, state kept across restarts
+- [x] Monthly SLA report (Reports page, CSV, print layout, `GET .../reports/sla?month=`)
+- [x] DEGRADED detection from a rolling per-region p95 baseline (>3× the 7-day baseline over 15 minutes, back at ≤2×; `degraded` /
+  `latency_recovered` notifications; status page, `/metrics` and web know the state)
+- [x] `upsctl` CLI (`cmd/upsctl`, cobra): `export`, `diff`, `apply [--prune]` for monitors (with SLOs), channels, policies and status pages
+- [x] `export` writes channel secrets as `${ENV_VAR}` placeholders; `apply` resolves them from the environment
+- [x] Example GitLab CI job (`deploy/examples/upsctl.gitlab-ci.yml`, only YAML-linted; it cannot run here)
+- [ ] Not verified: the new pages in a real browser, `upsctl` against a deployed instance, the DEGRADED baseline query on a large
+  heartbeat table
 
-**Done when:** `upsctl apply` from CI creates the same setup on a fresh instance.
+**Done when:** `upsctl apply` from CI creates the same setup on a fresh instance — `TestPhase7UpsctlDoneWhen`. ✔
+(also `TestPhase7DegradedDoneWhen` and `TestPhase7SLODoneWhen`)
 
 ## Phase 8: Packaging and launch — partly done (pulled forward in Phase 3)
 

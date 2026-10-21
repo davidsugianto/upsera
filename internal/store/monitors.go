@@ -272,15 +272,16 @@ func (s *Store) ListMonitorStates(ctx context.Context) ([]model.MonitorState, er
 // whereClause (a SQL condition on the "h" alias of upsera.heartbeats,
 // starting placeholders at $2). $1 is always the IANA tz used to bucket
 // h.time into calendar days. Maintenance heartbeats are not counted;
-// pending counts as up; latency stats use only up heartbeats.
+// pending and degraded count as up; latency stats use only up and degraded
+// heartbeats.
 func rollupUpsertSQL(whereClause string) string {
 	return `
 		INSERT INTO upsera.uptime_daily (monitor_id, day, checks, up, avg_latency_ms, p95_latency_ms)
 		SELECT h.monitor_id, (h.time AT TIME ZONE $1)::date,
 			count(*) FILTER (WHERE h.status <> 3),
-			count(*) FILTER (WHERE h.status IN (1, 2)),
-			coalesce(avg(h.latency_ms) FILTER (WHERE h.status = 1), 0)::integer,
-			coalesce(percentile_cont(0.95) WITHIN GROUP (ORDER BY h.latency_ms) FILTER (WHERE h.status = 1), 0)::integer
+			count(*) FILTER (WHERE h.status IN (1, 2, 4)),
+			coalesce(avg(h.latency_ms) FILTER (WHERE h.status IN (1, 4)), 0)::integer,
+			coalesce(percentile_cont(0.95) WITHIN GROUP (ORDER BY h.latency_ms) FILTER (WHERE h.status IN (1, 4)), 0)::integer
 		FROM upsera.heartbeats h
 		WHERE ` + whereClause + `
 		GROUP BY 1, 2
@@ -327,6 +328,32 @@ func (s *Store) PruneHeartbeats(ctx context.Context, before time.Time, batchSize
 		}
 	})
 	return total, err
+}
+
+// LatencyBaselines returns the p95 latency and the number of up and
+// degraded heartbeats since the given time, per (monitor, probe): the
+// baselines of DEGRADED detection. One grouped query, run in the background.
+func (s *Store) LatencyBaselines(ctx context.Context, since time.Time) (map[model.BaselineKey]model.LatencyBaseline, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT monitor_id, probe_id,
+			percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)::integer, count(*)
+		FROM upsera.heartbeats
+		WHERE time >= $1 AND status IN (1, 4)
+		GROUP BY monitor_id, probe_id`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[model.BaselineKey]model.LatencyBaseline)
+	for rows.Next() {
+		var k model.BaselineKey
+		var b model.LatencyBaseline
+		if err := rows.Scan(&k.MonitorID, &k.ProbeID, &b.P95Ms, &b.Samples); err != nil {
+			return nil, err
+		}
+		out[k] = b
+	}
+	return out, rows.Err()
 }
 
 // ListUptimeDaily returns monitorID's rollup rows with from <= day <= to

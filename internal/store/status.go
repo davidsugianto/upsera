@@ -212,7 +212,7 @@ func (s *Store) ListPublishedCustomDomains(ctx context.Context) ([]model.PageDom
 // uptime_daily rollup; today is counted from raw heartbeats since
 // todayStart (the start of today in the server's time zone). Monitors
 // without data are absent; maintenance checks are not counted and PENDING
-// counts as up, as in the dashboard.
+// and DEGRADED count as up, as in the dashboard.
 func (s *Store) StatusPageUptime(ctx context.Context, monitorIDs []int64, fromDay, todayStart time.Time) (map[int64][]model.UptimeDay, error) {
 	out := make(map[int64][]model.UptimeDay)
 	rows, err := s.pool.Query(ctx, `
@@ -234,7 +234,7 @@ func (s *Store) StatusPageUptime(ctx context.Context, monitorIDs []int64, fromDa
 		return nil, err
 	}
 	today, err := s.pool.Query(ctx, `
-		SELECT monitor_id, count(*) FILTER (WHERE status <> 3), count(*) FILTER (WHERE status IN (1, 2))
+		SELECT monitor_id, count(*) FILTER (WHERE status <> 3), count(*) FILTER (WHERE status IN (1, 2, 4))
 		FROM upsera.heartbeats WHERE monitor_id = ANY($1) AND time >= $2 GROUP BY monitor_id`, monitorIDs, todayStart)
 	if err != nil {
 		return nil, err

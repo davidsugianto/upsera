@@ -4,7 +4,7 @@ import { statusBg } from './StatusBadge'
 
 function describe(b: Heartbeat): string {
   const parts = [new Date(b.time).toLocaleString(), b.status]
-  if (b.status === 'up' || b.status === 'pending') parts.push(`${b.latency_ms} ms`)
+  if (b.status === 'up' || b.status === 'pending' || b.status === 'degraded') parts.push(`${b.latency_ms} ms`)
   if (b.message) parts.push(b.message)
   return parts.join(' · ')
 }

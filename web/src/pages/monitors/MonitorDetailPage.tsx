@@ -10,11 +10,13 @@ import {
   useHeartbeats,
   useMonitor,
   useSaveMonitor,
+  useSLO,
   useStatusEvents,
   useUptimeSummary,
 } from '../../api/queries'
 import type { Alert } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ErrorBudgetCard } from '../../components/ErrorBudgetCard'
 import { HeartbeatBar } from '../../components/HeartbeatBar'
 import { LatencyChart } from '../../components/LatencyChart'
 import { StatusBadge, StatusDot } from '../../components/StatusBadge'
@@ -42,6 +44,7 @@ export function MonitorDetailPage() {
 
   const monitor = useMonitor(t, id)
   const uptime = useUptimeSummary(t, id)
+  const slo = useSLO(t, id) // null: the monitor has no SLO
   const bar = useHeartbeats(t, id, 'last100', { limit: 100 })
   const chart = useHeartbeats(t, id, range, { limit: 5000, sinceMs: ranges[range] })
   const openAlerts = useAlerts(t, { state: 'open', monitorId: id })
@@ -120,6 +123,9 @@ export function MonitorDetailPage() {
         <UptimeCard label="7d uptime" value={uptime.data?.uptime_7d} />
         <UptimeCard label="30d uptime" value={uptime.data?.uptime_30d} />
       </div>
+
+      {slo.data && <ErrorBudgetCard slo={slo.data} />}
+      <ErrorMessage error={slo.error} />
 
       {regionStateRows.length > 0 && (
         <section className="card">
