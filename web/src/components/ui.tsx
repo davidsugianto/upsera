@@ -3,15 +3,15 @@ import { ApiError } from '../api/client'
 
 export function PageHeader({ title, children }: { title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   )
 }
 
 export function Loading() {
-  return <p className="py-8 text-center text-sm text-muted">Loading…</p>
+  return <p role="status" className="py-10 text-center text-sm text-muted">Loading…</p>
 }
 
 /** errorText is the user-facing message for any thrown error. */
@@ -24,14 +24,14 @@ export function errorText(err: unknown): string {
 export function ErrorMessage({ error }: { error: unknown }) {
   if (!error) return null
   return (
-    <p role="alert" className="rounded-md border border-down/40 bg-down/10 px-3 py-2 text-sm text-down">
+    <p role="alert" className="rounded-md border border-down/50 bg-down/10 px-3 py-2 text-sm text-down-ink">
       {errorText(error)}
     </p>
   )
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="card px-6 py-10 text-center text-sm text-muted">{children}</div>
+  return <div className="card px-6 py-12 text-center text-sm text-muted">{children}</div>
 }
 
 export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {

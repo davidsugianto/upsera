@@ -16,7 +16,7 @@ export function NoTeamPage() {
   if (me.isPending) return <Loading />
   if (me.error) {
     return (
-      <div className="mx-auto max-w-md p-8">
+      <div className="mx-auto max-w-sm px-4 py-10">
         <ErrorMessage error={me.error} />
       </div>
     )
@@ -30,12 +30,12 @@ export function NoTeamPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
-      <div className="mb-6 flex justify-center">
+    <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center bg-bg px-4 py-10">
+      <div className="mb-8 flex justify-center">
         <Logo />
       </div>
       <form onSubmit={onSubmit} className="card space-y-4 p-6">
-        <h1 className="text-lg font-semibold">Create a team</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Create a team</h1>
         <p className="text-sm text-muted">
           You're not a member of any team yet. Create one, or ask a team owner to add you by email from that team's
           Members page.

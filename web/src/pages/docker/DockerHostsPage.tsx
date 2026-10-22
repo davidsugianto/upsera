@@ -64,21 +64,24 @@ export function DockerHostsPage() {
         </EmptyState>
       )}
       {hosts.data && hosts.data.length > 0 && (
-        <div className="card divide-y divide-line overflow-hidden p-0">
+        <div className="card divide-y divide-line overflow-hidden">
           {hosts.data.map((h) => (
             <div key={h.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{h.name}</span>
+                  <span className="text-sm font-medium">{h.name}</span>
                   <span className="font-mono text-xs text-muted">{h.endpoint}</span>
                   {h.tls.ca || h.tls.cert || h.tls.key ? (
-                    <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-ink">TLS</span>
+                    <span className="rounded border border-line-strong px-1.5 py-0.5 text-xs text-muted">TLS</span>
                   ) : null}
                 </div>
-                {h.config_error && <p className="mt-1 text-xs text-down">{h.config_error}</p>}
-                {insecureWarning({ endpoint: h.endpoint, ca: h.tls.ca, cert: h.tls.cert, key: h.tls.key }) && (
-                  <p className="mt-1 text-xs text-muted">No TLS</p>
-                )}
+                {h.config_error && <p className="mt-1 text-xs text-down-ink">{h.config_error}</p>}
+                {insecureWarning({
+                  endpoint: h.endpoint,
+                  ca: h.tls.ca,
+                  cert: h.tls.cert,
+                  key: h.tls.key,
+                }) && <p className="mt-1 text-xs text-muted">No TLS</p>}
                 {testResults[h.id] && <p className="mt-1 text-xs text-muted">{testResults[h.id]}</p>}
               </div>
               {can('editor') && (
@@ -114,7 +117,7 @@ export function DockerHostsPage() {
       >
         <p>Deleting a Docker host fails while a monitor still watches one of its containers.</p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}

@@ -91,7 +91,7 @@ function PageEditor({ team, pageId, initial }: { team: number; pageId?: number; 
   return (
     <div className="max-w-3xl">
       <PageHeader title={editing ? 'Edit status page' : 'Create status page'} />
-      <form onSubmit={submit} className="space-y-6">
+      <form onSubmit={submit} className="space-y-8">
         <div className="card space-y-4 p-5">
           <ErrorMessage error={save.error} />
           <TextField
@@ -171,10 +171,10 @@ function PageEditor({ team, pageId, initial }: { team: number; pageId?: number; 
 
         <section className="card space-y-3 p-5" aria-labelledby="builder-heading">
           <div>
-            <h2 id="builder-heading" className="text-base font-semibold">
+            <h2 id="builder-heading" className="text-base font-semibold text-balance">
               Monitors on this page
             </h2>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 max-w-[70ch] text-sm text-muted">
               Visitors see the <strong className="font-medium text-ink">public name</strong> you set here. It starts
               as the monitor’s own name (and an empty name falls back to it), so rename any monitor whose name is
               internal, such as a hostname, an IP address or a customer. Targets, URLs and check messages are never
@@ -192,7 +192,7 @@ function PageEditor({ team, pageId, initial }: { team: number; pageId?: number; 
               onChange={(sections) => set('sections', sections)}
             />
           )}
-          {errs.items && <p className="text-xs text-down">{errs.items}</p>}
+          {errs.items && <p className="text-xs text-down-ink">{errs.items}</p>}
         </section>
 
         <div className="flex gap-2">

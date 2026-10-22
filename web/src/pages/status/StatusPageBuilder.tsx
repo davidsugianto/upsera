@@ -39,8 +39,8 @@ export function StatusPageBuilder({
         <p className="text-sm text-muted">No sections yet. Add a section, then choose the monitors to list in it.</p>
       )}
       {sections.map((s, si) => (
-        <div key={s.key} className="rounded-md border border-line p-3">
-          <div className="flex flex-wrap items-start gap-2">
+        <div key={s.key} className="overflow-hidden rounded-md border border-line-strong">
+          <div className="flex flex-wrap items-start gap-2 border-b border-line bg-surface-2 p-3">
             <div className="min-w-48 flex-1">
               <input
                 className="input"
@@ -51,7 +51,7 @@ export function StatusPageBuilder({
                 value={s.name}
                 onChange={(e) => onChange(renameSection(sections, s.key, e.target.value))}
               />
-              {errors[`sections.${si}.name`] && <p className="mt-1 text-xs text-down">{errors[`sections.${si}.name`]}</p>}
+              {errors[`sections.${si}.name`] && <p className="mt-1 text-xs text-down-ink">{errors[`sections.${si}.name`]}</p>}
             </div>
             <div className="flex gap-1.5">
               <button
@@ -84,14 +84,14 @@ export function StatusPageBuilder({
             </div>
           </div>
 
-          {s.items.length === 0 && <p className="mt-3 text-sm text-muted">No monitors in this section yet.</p>}
-          <ul className="mt-3 space-y-2">
+          {s.items.length === 0 && <p className="px-3 py-3 text-sm text-muted">No monitors in this section yet.</p>}
+          <ul className="divide-y divide-line">
             {s.items.map((it, ii) => {
               const m = byId.get(it.monitorId)
               const n = (starts[si] ?? 0) + ii
               const err = errors[`items.${n}.display_name`] ?? errors[`items.${n}.monitor_id`]
               return (
-                <li key={it.monitorId} className="rounded-md bg-bg p-2">
+                <li key={it.monitorId} className="bg-surface p-3">
                   <div className="flex flex-wrap items-start gap-2">
                     <div className="min-w-48 flex-1">
                       <label className="mb-0.5 block text-xs text-muted" htmlFor={`item-${it.monitorId}`}>
@@ -107,7 +107,7 @@ export function StatusPageBuilder({
                         value={it.displayName}
                         onChange={(e) => onChange(renameItem(sections, it.monitorId, e.target.value))}
                       />
-                      {err && <p className="mt-1 text-xs text-down">{err}</p>}
+                      {err && <p className="mt-1 text-xs text-down-ink">{err}</p>}
                     </div>
                     <div className="flex gap-1.5 pt-5">
                       <button
@@ -143,7 +143,7 @@ export function StatusPageBuilder({
             })}
           </ul>
 
-          <div className="mt-3">
+          <div className="border-t border-line bg-surface-2 p-3">
             <select
               className="input sm:max-w-xs"
               aria-label={`Add a monitor to section ${si + 1}`}

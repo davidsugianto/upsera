@@ -1,15 +1,15 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router'
 import { useCreateTeam, useLogout, useMe } from '../api/queries'
 import { useRole } from '../hooks/useRole'
-import { saveTheme, storedTheme, type Theme } from '../lib/theme'
+import { resolveTheme, saveChoice, storedChoice, type ThemeChoice } from '../lib/theme'
 import { ErrorBanner } from './ErrorBanner'
 import { ErrorMessage } from './ui'
 
 export function Logo() {
   return (
     <span className="flex items-center gap-2 text-base font-semibold tracking-tight">
-      <span className="inline-block size-3 rounded-full bg-accent" aria-hidden />
+      <span className="inline-block size-3 shrink-0 rounded-full bg-accent" aria-hidden />
       Upsera
     </span>
   )
@@ -23,23 +23,51 @@ export function Layout({ teamId, children }: { teamId?: number; children: ReactN
   const { pathname } = useLocation()
   const base = teamId !== undefined ? `/t/${teamId}` : ''
   const link = ({ isActive }: { isActive: boolean }) =>
-    `block rounded-md px-3 py-1.5 text-sm ${isActive ? 'bg-accent-soft font-medium text-accent-ink' : 'text-ink hover:bg-line/60'}`
+    `flex h-9 items-center rounded-md px-3 text-sm transition-colors ${isActive ? 'bg-accent font-medium text-white' : 'text-ink hover:bg-surface-2'}`
+  const opener = useRef<HTMLButtonElement>(null)
+  const closer = useRef<HTMLButtonElement>(null)
+
+  // Mobile rail: Escape closes it, focus moves into it on open and back to the opener on close.
+  useEffect(() => {
+    if (!navOpen) return
+    closer.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setNavOpen(false)
+        opener.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [navOpen])
+
+  const closeNav = () => {
+    setNavOpen(false)
+    opener.current?.focus()
+  }
 
   return (
     <div className="min-h-screen">
       <ErrorBanner />
       <div className="flex">
+        {navOpen && <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={closeNav} aria-hidden />}
         <aside
-          className={`${navOpen ? 'block' : 'hidden'} fixed inset-y-0 left-0 z-20 w-60 shrink-0 border-r border-line bg-surface p-4 md:sticky md:top-0 md:block md:h-screen`}
+          className={`${navOpen ? 'block' : 'hidden'} fixed inset-y-0 left-0 z-30 w-60 shrink-0 overflow-y-auto border-r border-line bg-surface p-4 md:sticky md:top-0 md:block md:h-screen`}
         >
           <div className="mb-5 flex items-center justify-between">
             <Logo />
-            <button type="button" className="btn md:hidden" onClick={() => setNavOpen(false)} aria-label="Close menu">
+            <button
+              ref={closer}
+              type="button"
+              className="btn min-h-9 min-w-9 md:hidden"
+              onClick={closeNav}
+              aria-label="Close menu"
+            >
               ×
             </button>
           </div>
           {me && <TeamSwitcher teamId={teamId} />}
-          <nav className="mt-4 space-y-0.5" onClick={() => setNavOpen(false)}>
+          <nav className="mt-4 space-y-0.5" onClick={closeNav}>
             {teamId !== undefined && (
               <>
                 <NavLink
@@ -85,8 +113,14 @@ export function Layout({ teamId, children }: { teamId?: number; children: ReactN
           </nav>
         </aside>
         <div className="min-w-0 flex-1">
-          <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5 md:px-8">
-            <button type="button" className="btn md:hidden" onClick={() => setNavOpen(true)} aria-label="Open menu">
+          <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-bg px-4 py-2 md:px-8">
+            <button
+              ref={opener}
+              type="button"
+              className="btn min-h-9 min-w-9 md:hidden"
+              onClick={() => setNavOpen(true)}
+              aria-label="Open menu"
+            >
               ☰
             </button>
             <div className="flex-1" />
@@ -109,7 +143,7 @@ function TeamSwitcher({ teamId }: { teamId?: number }) {
 
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase" htmlFor="team-switcher">
+      <label className="mb-1 block text-xs font-medium text-muted" htmlFor="team-switcher">
         Team
       </label>
       <select
@@ -153,10 +187,10 @@ function TeamSwitcher({ teamId }: { teamId?: number }) {
           />
           <ErrorMessage error={create.error} />
           <div className="flex gap-2">
-            <button type="submit" className="btn-primary" disabled={!name.trim() || create.isPending}>
+            <button type="submit" className="btn-primary min-h-9" disabled={!name.trim() || create.isPending}>
               Create
             </button>
-            <button type="button" className="btn" onClick={() => setCreating(false)}>
+            <button type="button" className="btn min-h-9" onClick={() => setCreating(false)}>
               Cancel
             </button>
           </div>
@@ -166,34 +200,81 @@ function TeamSwitcher({ teamId }: { teamId?: number }) {
   )
 }
 
+const themeOptions: { value: ThemeChoice; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+
 function UserMenu() {
   const { data: me } = useMe()
   const navigate = useNavigate()
   const logout = useLogout()
-  const [theme, setTheme] = useState<Theme>(storedTheme)
+  const [choice, setChoice] = useState<ThemeChoice>(storedChoice)
   const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+
+  // Escape and a click outside close the menu.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false)
+        trigger.current?.focus()
+      }
+    }
+    const onDown = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [open])
+
+  const item = 'flex min-h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm transition-colors hover:bg-surface-2'
   return (
-    <div className="relative">
-      <button type="button" className="btn" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+    <div className="relative" ref={root}>
+      <button
+        ref={trigger}
+        type="button"
+        className="btn min-h-9"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
         {me?.user.name || me?.user.email}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-52 rounded-md border border-line bg-surface p-1 shadow-lg">
+        <div className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-line bg-surface p-1">
           <p className="truncate px-3 py-1.5 text-xs text-muted">{me?.user.email}</p>
+          <div role="group" aria-label="Theme" className="border-y border-line py-1">
+            <p className="px-3 py-1 text-xs text-muted">Theme</p>
+            {themeOptions.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={choice === o.value}
+                title={o.value === 'system' ? `Follows your device (now ${resolveTheme('system')})` : undefined}
+                className={item}
+                onClick={() => {
+                  saveChoice(o.value)
+                  setChoice(o.value)
+                }}
+              >
+                <span
+                  aria-hidden
+                  className={`size-2.5 shrink-0 rounded-full border ${choice === o.value ? 'border-accent bg-accent' : 'border-line-strong'}`}
+                />
+                {o.label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-line/60"
-            onClick={() => {
-              const next = theme === 'dark' ? 'light' : 'dark'
-              saveTheme(next)
-              setTheme(next)
-            }}
-          >
-            {theme === 'dark' ? 'Light theme' : 'Dark theme'}
-          </button>
-          <button
-            type="button"
-            className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-line/60"
+            className={`${item} mt-1`}
             onClick={() => logout.mutate(undefined, { onSettled: () => navigate('/login') })}
           >
             Log out

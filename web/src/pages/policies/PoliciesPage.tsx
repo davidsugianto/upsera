@@ -66,11 +66,11 @@ export function PoliciesPage() {
         </EmptyState>
       )}
       {policies.data && channels.data && policies.data.length > 0 && (
-        <div className="card divide-y divide-line overflow-hidden p-0">
+        <div className="card divide-y divide-line overflow-hidden">
           {policies.data.map((p) => (
             <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <div className="font-medium">{p.name}</div>
+                <div className="text-sm font-medium">{p.name}</div>
                 <div className="mt-0.5 text-xs text-muted">{stepSummary(p, channels.data)}</div>
               </div>
               {can('editor') && (
@@ -103,7 +103,7 @@ export function PoliciesPage() {
       >
         <p>Deleting fails if a monitor still uses this policy.</p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}

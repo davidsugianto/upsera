@@ -8,6 +8,7 @@ import {
 import type { Incident, IncidentSeverity, IncidentStatus } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Select, TextField } from '../../components/Fields'
+import { statusBg } from '../../components/StatusBadge'
 import { ErrorMessage, errorText, fieldError, formatTime } from '../../components/ui'
 import {
   emptyIncidentForm,
@@ -19,9 +20,17 @@ import {
 } from '../../lib/statusPageForm'
 
 const severityStyle: Record<IncidentSeverity, string> = {
-  minor: 'text-pend',
-  major: 'text-down',
-  critical: 'bg-down/10 font-semibold text-down',
+  minor: 'border-line-strong text-pend-ink',
+  major: 'border-down/50 text-down-ink',
+  critical: 'border-down bg-down/10 font-semibold text-down-ink',
+}
+
+// Incident state: a mark (fill + pattern) plus the word, text in the -ink variant.
+const stateMark: Record<IncidentStatus, { fill: string; ink: string }> = {
+  investigating: { fill: statusBg('down'), ink: 'text-down-ink' },
+  identified: { fill: statusBg('pending'), ink: 'text-pend-ink' },
+  monitoring: { fill: statusBg('degraded'), ink: 'text-pend-ink' },
+  resolved: { fill: statusBg('up'), ink: 'text-up-ink' },
 }
 
 /** IncidentCard shows one incident with its timeline and, for editors, its actions. */
@@ -48,18 +57,23 @@ export function IncidentCard({ team, pageId, incident, canEdit }: { team: number
     <article className="card p-4" aria-label={incident.title}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-medium">{incident.title}</h3>
+          <h3 className="text-base font-semibold text-balance">{incident.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-            {incident.draft && <span className="rounded-full border border-line px-2 py-0.5 text-muted">Draft</span>}
-            <span className={`rounded-full border border-line px-2 py-0.5 ${severityStyle[incident.severity]}`}>
+            {incident.draft && <span className="rounded-full border border-line-strong px-2 py-0.5 text-muted">Draft</span>}
+            <span className={`rounded-full border px-2 py-0.5 ${severityStyle[incident.severity]}`}>
               {incident.severity}
             </span>
-            <span className="rounded-full border border-line px-2 py-0.5">{statusLabel(incident.status)}</span>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border border-line-strong px-2 py-0.5 font-medium ${stateMark[incident.status].ink}`}
+            >
+              <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${stateMark[incident.status].fill}`} />
+              {statusLabel(incident.status)}
+            </span>
             <span className="text-muted">Started {formatTime(incident.started_at)}</span>
             {incident.resolved_at && <span className="text-muted">Resolved {formatTime(incident.resolved_at)}</span>}
           </div>
           {incident.auto && (
-            <p className="mt-1.5 rounded bg-accent-soft px-2 py-1 text-xs text-accent-ink">
+            <p className="mt-2 inline-block rounded-md border border-line px-2 py-1 text-xs text-muted">
               {incident.draft ? 'Auto-detected, review before publishing' : 'Auto-detected from an alert'}
             </p>
           )}
@@ -85,13 +99,18 @@ export function IncidentCard({ team, pageId, incident, canEdit }: { team: number
       </div>
 
       {updates.length > 0 ? (
-        <ol className="mt-3 space-y-2 border-l border-line pl-3">
+        <ol className="mt-4 divide-y divide-line border-y border-line">
           {updates.map((u) => (
-            <li key={u.id} className="text-sm">
-              <div className="text-xs text-muted">
-                <span className="font-medium text-ink">{statusLabel(u.status)}</span> · {formatTime(u.created_at)}
+            <li key={u.id} className="py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted tabular-nums">
+                <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+                  <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${stateMark[u.status].fill}`} />
+                  {statusLabel(u.status)}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{formatTime(u.created_at)}</span>
               </div>
-              <p className="whitespace-pre-wrap">{u.body}</p>
+              <p className="mt-0.5 max-w-[70ch] whitespace-pre-wrap">{u.body}</p>
             </li>
           ))}
         </ol>
@@ -118,7 +137,7 @@ export function IncidentCard({ team, pageId, incident, canEdit }: { team: number
           title and messages first.
         </p>
         {actionError && confirm === 'publish' && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {actionError}
           </p>
         )}
@@ -136,7 +155,7 @@ export function IncidentCard({ team, pageId, incident, canEdit }: { team: number
             : 'The incident disappears from the public page and its history. Subscribers who were already notified keep their message.'}
         </p>
         {actionError && confirm === 'delete' && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {actionError}
           </p>
         )}
@@ -161,7 +180,7 @@ function UpdateForm({ team, pageId, incident, onDone }: { team: number; pageId: 
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 space-y-3 rounded-md bg-bg p-3" aria-label="Post an update">
+    <form onSubmit={submit} className="mt-4 space-y-3 rounded-md border border-line bg-surface-2 p-3" aria-label="Post an update">
       <ErrorMessage error={add.error} />
       <Select
         label="Status"
@@ -210,7 +229,7 @@ function EditForm({ team, pageId, incident, onDone }: { team: number; pageId: nu
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 space-y-3 rounded-md bg-bg p-3" aria-label="Edit incident">
+    <form onSubmit={submit} className="mt-4 space-y-3 rounded-md border border-line bg-surface-2 p-3" aria-label="Edit incident">
       <ErrorMessage error={edit.error} />
       <TextField label="Title" value={title} onChange={setTitle} required error={titleError || fieldError(edit.error, 'title')} />
       <Select

@@ -18,7 +18,7 @@ export function SetupPage() {
   if (status.isPending) return <Loading />
   if (status.error) {
     return (
-      <div className="mx-auto max-w-md p-8">
+      <div className="mx-auto max-w-sm px-4 py-10">
         <ErrorMessage error={status.error} />
       </div>
     )
@@ -34,12 +34,12 @@ export function SetupPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
-      <div className="mb-6 flex justify-center">
+    <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center bg-bg px-4 py-10">
+      <div className="mb-8 flex justify-center">
         <Logo />
       </div>
       <form onSubmit={onSubmit} className="card space-y-4 p-6">
-        <h1 className="text-lg font-semibold">Set up Upsera</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Set up Upsera</h1>
         <p className="text-sm text-muted">Create the first admin account and your team.</p>
         <ErrorMessage error={setup.error} />
         <TextField

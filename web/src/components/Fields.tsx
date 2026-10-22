@@ -11,7 +11,7 @@ function Field({ id, label, error, help, className = '', children }: Base & { id
       </label>
       {children}
       {help && !error && <p className="mt-1 text-xs text-muted">{help}</p>}
-      {error && <p className="mt-1 text-xs text-down">{error}</p>}
+      {error && <p className="mt-1 text-xs text-down-ink">{error}</p>}
     </div>
   )
 }
@@ -129,7 +129,7 @@ export function Checkbox({
     <label className="flex items-start gap-2 text-sm">
       <input
         type="checkbox"
-        className="mt-0.5 accent-[#C2185B]"
+        className="mt-0.5 accent-accent"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
@@ -159,7 +159,7 @@ export function TagInput({
     <Field id={id} {...base}>
       <div className="input flex flex-wrap items-center gap-1.5">
         {value.map((t) => (
-          <span key={t} className="inline-flex items-center gap-1 rounded bg-line px-1.5 py-0.5 text-xs">
+          <span key={t} className="inline-flex items-center gap-1 rounded border border-line bg-surface-2 px-1.5 py-0.5 text-xs">
             {t}
             <button
               type="button"
@@ -216,7 +216,7 @@ export function MultiCheck({
       {options.length === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
       ) : (
-        <div className="grid max-h-56 gap-1.5 overflow-y-auto rounded-md border border-line p-2 sm:grid-cols-2">
+        <div className="grid max-h-56 gap-1.5 overflow-y-auto rounded-md border border-line-strong bg-surface p-2 sm:grid-cols-2">
           {options.map((o) => (
             <Checkbox
               key={o.value}
@@ -228,7 +228,7 @@ export function MultiCheck({
         </div>
       )}
       {help && !error && <p className="mt-1 text-xs text-muted">{help}</p>}
-      {error && <p className="mt-1 text-xs text-down">{error}</p>}
+      {error && <p className="mt-1 text-xs text-down-ink">{error}</p>}
     </fieldset>
   )
 }
@@ -283,7 +283,7 @@ export function KeyValueEditor({
         </button>
       </div>
       {help && !error && <p className="mt-1 text-xs text-muted">{help}</p>}
-      {error && <p className="mt-1 text-xs text-down">{error}</p>}
+      {error && <p className="mt-1 text-xs text-down-ink">{error}</p>}
     </fieldset>
   )
 }

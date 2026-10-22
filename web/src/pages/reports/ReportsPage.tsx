@@ -15,9 +15,9 @@ export function ReportsPage() {
   const r = report.data
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="SLA report">
-        <div className="flex items-center gap-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           <label htmlFor={monthId} className="text-sm font-medium">
             Month
           </label>
@@ -47,7 +47,7 @@ export function ReportsPage() {
       {r && (
         <>
           {r.partial && (
-            <p className="rounded-md border border-pend/40 bg-pend/10 px-3 py-2 text-sm">
+            <p className="rounded-md border border-pend/50 bg-pend/10 px-3 py-2 text-sm text-pend-ink">
               Partial month: {r.from} to {r.to} so far. The numbers change until the month ends.
             </p>
           )}
@@ -56,11 +56,11 @@ export function ReportsPage() {
           ) : (
             <div className="card overflow-x-auto">
               <table className="report-table w-full text-sm">
-                <caption className="px-4 py-3 text-left text-sm font-semibold">
+                <caption className="px-4 py-3 text-left text-base font-semibold text-balance">
                   SLA report for {r.month} ({r.from} to {r.to})
                 </caption>
                 <thead>
-                  <tr className="border-y border-line text-left text-xs text-muted">
+                  <tr className="border-y border-line bg-surface-2 text-left text-xs text-muted">
                     <th scope="col" className="px-4 py-2 font-medium">Monitor</th>
                     <th scope="col" className="px-4 py-2 text-right font-medium">Checks</th>
                     <th scope="col" className="px-4 py-2 text-right font-medium">Uptime</th>
@@ -70,7 +70,7 @@ export function ReportsPage() {
                     <th scope="col" className="px-4 py-2 text-right font-medium">p95</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-line">
                   {(r.rows ?? []).map((row) => (
                     <ReportRow key={row.monitor_id} row={row} />
                   ))}
@@ -86,7 +86,7 @@ export function ReportsPage() {
 
 function ReportRow({ row }: { row: SLARow }) {
   return (
-    <tr className="border-b border-line last:border-0">
+    <tr>
       <th scope="row" className="px-4 py-2 text-left font-medium">
         {row.monitor_name}
       </th>
@@ -116,9 +116,10 @@ function MetBadge({ met }: { met: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
-        met ? 'border-up/50 text-ink' : 'border-down/50 text-down'
+        met ? 'border-up/50 text-up-ink' : 'border-down/50 text-down-ink'
       }`}
     >
+      <span aria-hidden="true" className={`size-2 rounded-full ${met ? 'bg-up' : 'bg-down'}`} />
       <span aria-hidden="true">{met ? '✓' : '✗'}</span>
       <span>{met ? 'Met' : 'Missed'}</span>
     </span>

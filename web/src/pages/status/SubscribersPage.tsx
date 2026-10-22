@@ -51,7 +51,7 @@ export function SubscribersPage() {
           All status pages
         </Link>
       </PageHeader>
-      <p className="mb-4 text-sm text-muted">
+      <p className="mb-4 max-w-[70ch] text-sm text-muted">
         Visitors subscribe by email on the public page and must confirm their address first. Webhooks are added here and
         receive a JSON POST for each incident notice. Only confirmed subscribers are notified.
       </p>
@@ -61,34 +61,41 @@ export function SubscribersPage() {
       {subs.data && subs.data.length > 0 && (
         <div className="card overflow-x-auto p-0">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted">
+            <thead className="border-b border-line bg-surface-2">
               <tr>
-                <th className="px-4 py-2 font-normal">Kind</th>
-                <th className="px-4 py-2 font-normal">Target</th>
-                <th className="px-4 py-2 font-normal">Confirmed</th>
-                <th className="px-4 py-2 font-normal">Added</th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-muted">Kind</th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-muted">Target</th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-muted">Confirmed</th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-muted">Added</th>
                 {can('editor') && (
-                  <th className="px-4 py-2 font-normal">
+                  <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-muted">
                     <span className="sr-only">Actions</span>
                   </th>
                 )}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {subs.data.map((s) => (
-                <tr key={s.id} className="border-t border-line">
+                <tr key={s.id}>
                   <td className="px-4 py-2 capitalize">{s.kind}</td>
-                  <td className="px-4 py-2 font-mono text-xs break-all">{s.target}</td>
+                  <td className="min-w-48 px-4 py-2 font-mono text-xs break-all">{s.target}</td>
                   <td className="px-4 py-2">
                     {s.confirmed ? (
-                      'Yes'
+                      <span className="inline-flex items-center gap-1.5 text-up-ink">
+                        <span aria-hidden="true" className="size-2 rounded-full bg-up" />
+                        Yes
+                      </span>
                     ) : (
-                      <span className="text-muted" title="Waiting for the subscriber to click the confirmation link">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-muted"
+                        title="Waiting for the subscriber to click the confirmation link"
+                      >
+                        <span aria-hidden="true" className="size-2 rounded-full border border-line-strong" />
                         Pending
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-muted">{formatTime(s.created_at)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-muted">{formatTime(s.created_at)}</td>
                   {can('editor') && (
                     <td className="px-4 py-2 text-right">
                       <button
@@ -123,7 +130,7 @@ export function SubscribersPage() {
           public page.
         </p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}
@@ -147,7 +154,7 @@ function AddWebhook({ team, pageId }: { team: number; pageId: number }) {
   }
 
   return (
-    <form onSubmit={submit} className="card mt-6 max-w-lg space-y-3 p-4" aria-label="Add a webhook">
+    <form onSubmit={submit} className="card mt-8 max-w-lg space-y-3 p-4" aria-label="Add a webhook">
       <h2 className="text-base font-semibold">Add a webhook</h2>
       <ErrorMessage error={add.error} />
       <TextField

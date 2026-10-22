@@ -137,7 +137,7 @@ function MaintenanceForm({
   return (
     <div>
       <PageHeader title={existing ? 'Edit maintenance window' : 'Add maintenance window'} />
-      <form onSubmit={onSubmit} className="card max-w-xl space-y-4 p-5">
+      <form onSubmit={onSubmit} className="card max-w-xl space-y-6 p-5">
         <TextField
           label="Name"
           value={form.name}

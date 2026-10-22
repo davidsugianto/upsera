@@ -73,12 +73,14 @@ export function ProbesSection() {
   }
 
   return (
-    <section>
-      <h2 className="mb-1 text-base font-semibold">Probes</h2>
-      <p className="mb-3 max-w-2xl text-xs text-muted">
+    <section className="space-y-4">
+      <div className="space-y-1">
+      <h2 className="text-base font-semibold">Probes</h2>
+      <p className="max-w-2xl text-xs text-muted">
         A probe runs checks from another region and reports back. Each region has one probe; monitors pick the regions
         they run in. The built-in <code>local</code> probe is the server itself.
       </p>
+      </div>
 
       {issued && <IssuedToken issued={issued} onDismiss={() => setIssued(null)} />}
 
@@ -87,7 +89,7 @@ export function ProbesSection() {
       ) : probes.error ? (
         <ErrorMessage error={probes.error} />
       ) : (
-        <div className="card divide-y divide-line overflow-hidden p-0">
+        <ul className="card divide-y divide-line overflow-hidden">
           {probes.data.map((p) => (
             <ProbeRow
               key={p.id}
@@ -102,11 +104,11 @@ export function ProbesSection() {
               }}
             />
           ))}
-        </div>
+        </ul>
       )}
 
-      <form onSubmit={onCreate} className="card mt-4 max-w-md space-y-3 p-4" aria-label="Add a probe">
-        <h3 className="text-sm font-semibold">Add probe</h3>
+      <form onSubmit={onCreate} className="card max-w-md space-y-3 p-4" aria-label="Add a probe">
+        <h3 className="text-base font-semibold">Add probe</h3>
         <ErrorMessage error={create.error} />
         <TextField
           label="Name"
@@ -144,7 +146,7 @@ export function ProbesSection() {
           registers again with the new token (valid for 24 hours, single use).
         </p>
         {reissue.error && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {errorText(reissue.error)}
           </p>
         )}
@@ -163,7 +165,7 @@ export function ProbesSection() {
           <code>{deleting?.region}</code>.
         </p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}
@@ -175,11 +177,11 @@ export function ProbesSection() {
 function ProbeRow({ probe: p, onRenew, onDelete }: { probe: Probe; onRenew: () => void; onDelete: () => void }) {
   const now = useNow()
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 text-sm">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{p.name}</span>
-          <span className="rounded bg-line px-1.5 py-0.5 font-mono text-xs">{p.region}</span>
+          <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{p.region}</span>
           {p.is_local && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-ink">Built in</span>}
           <OnlineBadge probe={p} />
         </div>
@@ -210,7 +212,7 @@ function ProbeRow({ probe: p, onRenew, onDelete }: { probe: Probe; onRenew: () =
           </button>
         </div>
       )}
-    </div>
+    </li>
   )
 }
 
@@ -221,7 +223,7 @@ function OnlineBadge({ probe: p }: { probe: Probe }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs font-medium ${
-        p.online ? 'text-up' : 'text-down'
+        p.online ? 'text-up-ink' : 'text-down-ink'
       }`}
     >
       <span className={`inline-block size-2 rounded-full ${p.online ? 'bg-up' : 'bg-down'}`} aria-hidden="true" />
@@ -234,10 +236,10 @@ function OnlineBadge({ probe: p }: { probe: Probe }) {
 function IssuedToken({ issued, onDismiss }: { issued: Issued; onDismiss: () => void }) {
   const command = probeRunCommand(window.location.origin, issued.token)
   return (
-    <div role="status" className="card mb-4 space-y-3 border-accent p-4">
+    <div role="status" className="card space-y-3 border-line-strong p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">
+          <h3 className="text-base font-semibold">
             Registration token for {issued.probeName} ({issued.region})
           </h3>
           <p className="mt-1 text-xs text-muted">
@@ -249,7 +251,7 @@ function IssuedToken({ issued, onDismiss }: { issued: Issued; onDismiss: () => v
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-line bg-bg px-2 py-1 text-xs">
+        <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-line bg-surface-2 px-2 py-1 font-mono text-xs">
           {issued.token}
         </code>
         <CopyButton text={issued.token} label="Copy token" />
@@ -259,7 +261,7 @@ function IssuedToken({ issued, onDismiss }: { issued: Issued; onDismiss: () => v
           <span className="text-xs font-medium">Run this on the probe host</span>
           <CopyButton text={command} label="Copy command" />
         </div>
-        <pre className="overflow-x-auto rounded-md border border-line bg-bg p-3 text-xs">{command}</pre>
+        <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-xs">{command}</pre>
         <p className="mt-1 text-xs text-muted">
           The <code>upsera-probe</code> volume keeps the probe&apos;s credential, so the token is only needed on the
           first start.

@@ -1,20 +1,334 @@
+/* Upsera docs: the default VitePress theme dressed in the dashboard's "Riso proof sheet" look.
+   Values mirror web/src/index.css: cool paper (light), ink-black (dark), hairline rules,
+   pink for brand, links, primary buttons and the focus ring only.
+   Fonts are vendored (SIL OFL 1.1, see ./fonts/OFL-*.txt). */
+
+@font-face {
+  font-family: "Schibsted Grotesk";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("./fonts/schibsted-grotesk-latin-wght-normal.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+}
+
 :root {
-  --vp-c-brand-1: #c2185b;
-  --vp-c-brand-2: #ad1457;
-  --vp-c-brand-3: #c2185b;
-  --vp-c-brand-soft: rgba(194, 24, 91, 0.14);
-  --vp-home-hero-name-color: var(--vp-c-brand-1);
-  --vp-button-brand-bg: #c2185b;
-  --vp-button-brand-hover-bg: #ad1457;
-  --vp-button-brand-active-bg: #880e4f;
+  /* Upsera palette (light) */
+  --u-bg: #F1F4F1;
+  --u-surface: #FFFFFF;
+  --u-surface-2: #F6F8F6;
+  --u-ink: #101712;
+  --u-muted: #55645A;
+  --u-line: #D5DED8;
+  --u-line-strong: #B4C1B9;
+  --u-accent: #C2185B;
+  --u-accent-strong: #A3134B;
+  --u-accent-ink: #C2185B;
+  --u-accent-soft: #FBE3EC;
+  --u-pend-ink: #855600;
+  --u-pend: #F2A20C;
+  --u-down-ink: #B3202C;
+  --u-down: #D92D3A;
+  --u-maint-ink: #1B45C9;
+  --u-maint: #2D5BF0;
+
+  --vp-font-family-base: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vp-font-family-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Brand */
+  --vp-c-brand-1: var(--u-accent-ink);
+  --vp-c-brand-2: var(--u-accent-strong);
+  --vp-c-brand-3: var(--u-accent);
+  --vp-c-brand-soft: rgb(194 24 91 / 0.12);
+  --vp-home-hero-name-color: var(--u-accent-ink);
+
+  --vp-button-brand-border: var(--u-accent);
+  --vp-button-brand-text: #FFFFFF;
+  --vp-button-brand-bg: var(--u-accent);
+  --vp-button-brand-hover-border: var(--u-accent-strong);
+  --vp-button-brand-hover-text: #FFFFFF;
+  --vp-button-brand-hover-bg: var(--u-accent-strong);
+  --vp-button-brand-active-border: var(--u-accent-strong);
+  --vp-button-brand-active-text: #FFFFFF;
+  --vp-button-brand-active-bg: var(--u-accent-strong);
+  --vp-button-alt-border: var(--u-line-strong);
+  --vp-button-alt-bg: var(--u-surface);
+  --vp-button-alt-hover-bg: var(--u-surface-2);
+  --vp-button-alt-hover-border: var(--u-muted);
+  --vp-button-alt-active-bg: var(--u-surface-2);
+
+  /* Surfaces, rules and text */
+  --vp-c-bg: var(--u-bg);
+  --vp-c-bg-alt: var(--u-surface-2);
+  --vp-c-bg-elv: var(--u-surface);
+  --vp-c-bg-soft: var(--u-surface);
+  --vp-c-border: var(--u-line-strong);
+  --vp-c-divider: var(--u-line);
+  --vp-c-gutter: var(--u-line);
+  --vp-c-text-1: var(--u-ink);
+  --vp-c-text-2: var(--u-muted);
+  --vp-c-text-3: var(--u-muted);
+  --vp-c-default-soft: var(--u-surface-2);
+
+  /* Callouts use the status inks, never pink */
+  --vp-c-warning-1: var(--u-pend-ink);
+  --vp-c-warning-2: var(--u-pend-ink);
+  --vp-c-warning-3: var(--u-pend);
+  --vp-c-warning-soft: rgb(242 162 12 / 0.12);
+  --vp-c-danger-1: var(--u-down-ink);
+  --vp-c-danger-2: var(--u-down-ink);
+  --vp-c-danger-3: var(--u-down);
+  --vp-c-danger-soft: rgb(217 45 58 / 0.1);
+  --vp-c-tip-1: var(--u-maint-ink);
+  --vp-c-tip-2: var(--u-maint-ink);
+  --vp-c-tip-3: var(--u-maint);
+  --vp-c-tip-soft: rgb(45 91 240 / 0.08);
+  --vp-c-note-1: var(--u-ink);
+  --vp-c-note-soft: var(--u-surface-2);
+
+  /* Code */
+  --vp-code-font-size: 0.875em;
+  --vp-code-color: var(--u-ink);
+  --vp-code-bg: var(--u-surface-2);
+  --vp-code-block-bg: var(--u-surface);
+  --vp-code-block-divider-color: var(--u-line);
+  --vp-code-copy-code-bg: var(--u-surface-2);
+  --vp-code-copy-code-border-color: var(--u-line);
+  --vp-code-copy-code-hover-bg: var(--u-surface);
+  --vp-code-copy-code-hover-border-color: var(--u-line-strong);
+  --vp-code-tab-divider: var(--u-line);
+
+  /* Hairlines replace shadows */
+  --vp-shadow-1: none;
+  --vp-shadow-2: none;
+  --vp-shadow-3: 0 0 0 1px var(--u-line);
+  --vp-shadow-4: 0 0 0 1px var(--u-line);
+  --vp-shadow-5: 0 0 0 1px var(--u-line);
+
+  --vp-nav-bg-color: var(--u-bg);
+  --vp-sidebar-bg-color: var(--u-bg);
+  --vp-local-search-bg: var(--u-bg);
+  --vp-local-search-result-bg: var(--u-surface);
+  --vp-local-search-result-border: var(--u-line);
+  --vp-local-search-highlight-bg: var(--u-accent);
+  --vp-local-search-highlight-text: #FFFFFF;
 }
 
 .dark {
-  --vp-c-brand-1: #f06292;
-  --vp-c-brand-2: #ec407a;
-  --vp-c-brand-3: #c2185b;
-  --vp-c-brand-soft: rgba(240, 98, 146, 0.16);
-  --vp-button-brand-bg: #c2185b;
-  --vp-button-brand-hover-bg: #d81b60;
-  --vp-button-brand-active-bg: #ad1457;
+  --u-bg: #0B0E12;
+  --u-surface: #12171D;
+  --u-surface-2: #171D24;
+  --u-ink: #E8EDEA;
+  --u-muted: #93A19A;
+  --u-line: #232C36;
+  --u-line-strong: #364250;
+  --u-accent: #C2185B;
+  --u-accent-strong: #D81B68;
+  --u-accent-ink: #F06292;
+  --u-accent-soft: #2E1020;
+  --u-pend-ink: #FFB93B;
+  --u-pend: #F8A306;
+  --u-down-ink: #FF7A80;
+  --u-down: #EF5961;
+  --u-maint-ink: #8DA6FF;
+  --u-maint: #5B7CFA;
+
+  --vp-c-brand-soft: rgb(240 98 146 / 0.14);
+  --vp-c-warning-soft: rgb(248 163 6 / 0.12);
+  --vp-c-danger-soft: rgb(239 89 97 / 0.12);
+  --vp-c-tip-soft: rgb(91 124 250 / 0.12);
+}
+
+/* Base type: tabular figures, calm heading scale on a 4px grid */
+body {
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--u-accent-soft);
+  color: var(--u-ink);
+}
+:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  text-wrap: balance;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.vp-doc h1 {
+  font-size: 32px;
+  line-height: 40px;
+}
+.vp-doc h2 {
+  margin: 48px 0 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 22px;
+  line-height: 28px;
+}
+.vp-doc h3 {
+  margin: 32px 0 8px;
+  font-size: 18px;
+  line-height: 24px;
+}
+.vp-doc p,
+.vp-doc li {
+  line-height: 28px;
+}
+
+/* Links: pink text with a quiet underline */
+.vp-doc a {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--vp-c-brand-1) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.vp-doc a:hover {
+  text-decoration-color: var(--vp-c-brand-1);
+}
+.vp-doc a.header-anchor {
+  text-decoration: none;
+}
+
+/* Inline code and code blocks: hairline modules on paper */
+.vp-doc :not(pre) > code {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.vp-doc :not(pre, h1, h2, h3, h4, h5, h6) > code {
+  font-size: 0.875em;
+}
+.vp-doc a > code {
+  color: var(--vp-c-brand-1);
+}
+.vp-doc div[class*="language-"],
+.vp-code-group .tabs {
+  border: 1px solid var(--vp-c-divider);
+}
+.vp-doc div[class*="language-"] {
+  border-radius: 8px;
+}
+.vp-code-group .tabs {
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+}
+.vp-code-group div[class*="language-"] {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+@media (max-width: 639px) {
+  .vp-doc div[class*="language-"] {
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+}
+
+/* Tables: ruled, muted header, tabular numbers */
+.vp-doc table {
+  border-collapse: collapse;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.vp-doc tr {
+  background-color: var(--u-surface);
+  border-top: 1px solid var(--vp-c-divider);
+}
+.vp-doc tr:nth-child(2n) {
+  background-color: var(--u-surface);
+}
+.vp-doc th,
+.vp-doc td {
+  border: 0;
+  border-top: 1px solid var(--vp-c-divider);
+  padding: 8px 12px;
+  vertical-align: top;
+}
+.vp-doc th {
+  background-color: var(--u-surface-2);
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Callouts: hairline modules, no tinted floods */
+.vp-doc .custom-block {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background-color: var(--u-surface);
+  color: var(--vp-c-text-1);
+}
+.vp-doc .custom-block.tip,
+.vp-doc .custom-block.info,
+.vp-doc .custom-block.note {
+  background-color: var(--u-surface);
+}
+.vp-doc .custom-block.warning {
+  border-color: color-mix(in srgb, var(--u-pend) 50%, var(--u-line));
+}
+.vp-doc .custom-block.danger,
+.vp-doc .custom-block.caution {
+  border-color: color-mix(in srgb, var(--u-down) 50%, var(--u-line));
+}
+.vp-doc .custom-block .custom-block-title {
+  font-weight: 650;
+}
+
+/* Screenshots and figures: hairline frame */
+.vp-doc img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+/* Chrome: hairline-ruled, no shadows or blur */
+.VPNav .divider-line,
+.VPLocalNav {
+  border-color: var(--vp-c-divider);
+}
+.VPFeature {
+  border: 1px solid var(--vp-c-divider) !important;
+  border-radius: 8px !important;
+  background-color: var(--u-surface) !important;
+}
+.VPHero .image-bg {
+  display: none;
+}
+.VPHero .image-src {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+.VPButton {
+  border-radius: 6px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
