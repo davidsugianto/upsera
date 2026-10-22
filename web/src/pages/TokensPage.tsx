@@ -36,11 +36,11 @@ export function TokensPage() {
       {tokens.data.length === 0 ? (
         <EmptyState>No tokens yet.</EmptyState>
       ) : (
-        <div className="card divide-y divide-line">
+        <ul className="card divide-y divide-line overflow-hidden">
           {tokens.data.map((tok) => (
             <TokenRow key={tok.id} t={t} token={tok} />
           ))}
-        </div>
+        </ul>
       )}
       <CreateTokenForm t={t} />
     </div>
@@ -52,11 +52,14 @@ function TokenRow({ t, token }: { t: number; token: Token }) {
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-      <div>
-        <div className="font-medium">{token.name}</div>
-        <div className="text-sm text-muted">
-          {token.scope} · created {formatTime(token.created_at)} · last used {formatTime(token.last_used_at)} · expires{' '}
+    <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{token.name}</span>
+          <span className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-muted">{token.scope}</span>
+        </div>
+        <div className="mt-1 text-xs text-muted tabular-nums">
+          created {formatTime(token.created_at)} · last used {formatTime(token.last_used_at)} · expires{' '}
           {token.expires_at ? formatTime(token.expires_at) : 'never'}
         </div>
       </div>
@@ -74,7 +77,7 @@ function TokenRow({ t, token }: { t: number; token: Token }) {
         Anything using this token will stop working immediately.
         {revoke.error && <ErrorMessage error={revoke.error} />}
       </ConfirmDialog>
-    </div>
+    </li>
   )
 }
 
@@ -100,8 +103,8 @@ function CreateTokenForm({ t }: { t: number }) {
 
   return (
     <>
-      <form onSubmit={onSubmit} className="card mt-4 max-w-lg space-y-4 p-5">
-        <h2 className="text-sm font-semibold">Create token</h2>
+      <form onSubmit={onSubmit} className="card mt-8 max-w-lg space-y-4 p-5">
+        <h2 className="text-base font-semibold">Create token</h2>
         <ErrorMessage error={create.error} />
         <TextField label="Name" value={name} onChange={setName} required />
         <div className="grid gap-4 sm:grid-cols-2">
@@ -139,14 +142,14 @@ function TokenCreatedDialog({ token, onClose }: { token: CreatedToken | null; on
         e.preventDefault()
         onClose()
       }}
-      className="m-auto w-full max-w-md rounded-lg border border-line bg-surface p-0 shadow-xl"
+      className="m-auto w-full max-w-md rounded-lg border border-line-strong bg-surface p-0"
     >
       <div className="p-5">
         <h2 className="text-base font-semibold">Token created</h2>
         <p className="mt-2 text-sm text-muted">You won't see this again. Copy it now and store it securely.</p>
         {token && (
           <div className="mt-3 flex items-center gap-2">
-            <code className="flex-1 overflow-x-auto rounded-md border border-line bg-bg px-2.5 py-1.5 text-xs">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-xs">
               {token.token}
             </code>
             <CopyButton text={token.token} />

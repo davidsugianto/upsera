@@ -56,7 +56,7 @@ export function IncidentsPage() {
           All status pages
         </Link>
       </PageHeader>
-      <p className="mb-4 text-sm text-muted">
+      <p className="mb-4 max-w-[70ch] text-sm text-muted">
         Publishing an incident shows it on the public page and notifies confirmed subscribers; so does every update you
         post to a published incident. Drafts are private and notify no one.
       </p>
@@ -64,12 +64,12 @@ export function IncidentsPage() {
       {(incidents.isPending || pages.isPending) && <Loading />}
       <ErrorMessage error={incidents.error ?? pages.error} />
       {incidents.data && all.length === 0 && <EmptyState>No incidents yet.</EmptyState>}
-      <div className="mt-6 space-y-6">
+      <div className="mt-8 space-y-8">
         {groups
           .filter((g) => g.list.length > 0)
           .map((g) => (
             <section key={g.title} aria-label={g.title}>
-              <h2 className="mb-2 text-sm font-semibold tracking-wide text-muted uppercase">
+              <h2 className="mb-2 text-base font-semibold text-balance">
                 {g.title} ({g.list.length})
               </h2>
               <div className="space-y-3">

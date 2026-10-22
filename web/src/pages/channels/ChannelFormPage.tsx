@@ -52,62 +52,81 @@ function ChannelEditor({ team, channelId, initial }: { team: number; channelId?:
   const submit = (e: FormEvent) => {
     e.preventDefault()
     save.mutate(
-      { id: channelId, body: { type, name: name.trim(), is_default: isDefault, config: formToConfig(type, form) } },
+      {
+        id: channelId,
+        body: {
+          type,
+          name: name.trim(),
+          is_default: isDefault,
+          config: formToConfig(type, form),
+        },
+      },
       { onSuccess: () => navigate(`/t/${team}/channels`) },
     )
   }
 
   return (
-    <div className="max-w-xl">
+    <div className="mx-auto max-w-3xl">
       <PageHeader title={editing ? 'Edit channel' : 'Add channel'} />
-      <form onSubmit={submit} className="card space-y-4 p-5">
+      <form onSubmit={submit} className="space-y-6">
         <ErrorMessage error={save.error} />
-        {editing ? (
-          <p className="text-sm text-muted">Type: {channelTypes.find((c) => c.value === type)?.label ?? type}</p>
-        ) : (
-          <Select
-            label="Type"
-            value={type}
-            onChange={(v) => {
-              const nt = v as ChannelType
-              setType(nt)
-              setForm(configToForm(nt, undefined))
-            }}
-            options={channelTypes.map((c) => ({ value: c.value, label: c.label }))}
-          />
-        )}
-        <TextField
-          label="Name"
-          value={name}
-          onChange={setName}
-          required
-          error={fieldError(save.error, 'name')}
-        />
-        <Checkbox
-          label="Default channel"
-          checked={isDefault}
-          onChange={setIsDefault}
-          help="Used when a monitor has no channels and no escalation policy."
-        />
-        {channelFields[type].map((spec) => (
-          <ChannelField
-            key={spec.name}
-            spec={spec}
-            editing={editing}
-            form={form}
-            setForm={setForm}
-            setValue={setValue}
-            setList={setList}
-            error={fieldError(save.error, `config.${spec.name}`)}
-          />
-        ))}
-        <div className="flex gap-2">
-          <button type="submit" className="btn-primary" disabled={save.isPending}>
-            {editing ? 'Save' : 'Create'}
-          </button>
+        <section className="card p-4">
+          <h2 className="mb-4 text-base font-semibold text-balance">Channel</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {editing ? (
+              <p className="text-sm text-muted sm:col-span-2">
+                Type: {channelTypes.find((c) => c.value === type)?.label ?? type}
+              </p>
+            ) : (
+              <Select
+                label="Type"
+                value={type}
+                onChange={(v) => {
+                  const nt = v as ChannelType
+                  setType(nt)
+                  setForm(configToForm(nt, undefined))
+                }}
+                options={channelTypes.map((c) => ({
+                  value: c.value,
+                  label: c.label,
+                }))}
+              />
+            )}
+            <TextField label="Name" value={name} onChange={setName} required error={fieldError(save.error, 'name')} />
+            <div className="sm:col-span-2">
+              <Checkbox
+                label="Default channel"
+                checked={isDefault}
+                onChange={setIsDefault}
+                help="Used when a monitor has no channels and no escalation policy."
+              />
+            </div>
+          </div>
+        </section>
+        <section className="card p-4">
+          <h2 className="mb-4 text-base font-semibold text-balance">Settings</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {channelFields[type].map((spec) => (
+              <ChannelField
+                key={spec.name}
+                spec={spec}
+                editing={editing}
+                form={form}
+                setForm={setForm}
+                setValue={setValue}
+                setList={setList}
+                error={fieldError(save.error, `config.${spec.name}`)}
+              />
+            ))}
+          </div>
+        </section>
+        <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-line bg-bg py-3">
           <Link to={`/t/${team}/channels`} className="btn">
             Cancel
           </Link>
+          <button type="submit" className="btn-primary" disabled={save.isPending}>
+            {editing ? 'Save' : 'Create'}
+          </button>
         </div>
       </form>
     </div>

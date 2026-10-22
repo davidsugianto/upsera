@@ -30,11 +30,11 @@ export function MembersPage() {
       {members.data.length === 0 ? (
         <EmptyState>No members yet.</EmptyState>
       ) : (
-        <div className="card divide-y divide-line">
+        <ul className="card divide-y divide-line overflow-hidden">
           {members.data.map((m) => (
             <MemberRow key={m.user_id} t={t} member={m} canManage={isOwner} />
           ))}
-        </div>
+        </ul>
       )}
       {isOwner && <AddMemberForm t={t} />}
     </div>
@@ -47,11 +47,11 @@ function MemberRow({ t, member, canManage }: { t: number; member: Member; canMan
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <div className="px-4 py-3">
+    <li className="px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="font-medium">{member.name}</div>
-          <div className="text-sm text-muted">{member.email}</div>
+          <div className="text-xs break-all text-muted">{member.email}</div>
         </div>
         {canManage ? (
           <div className="flex items-center gap-2">
@@ -73,7 +73,7 @@ function MemberRow({ t, member, canManage }: { t: number; member: Member; canMan
             </button>
           </div>
         ) : (
-          <span className="text-sm capitalize text-muted">{member.role}</span>
+          <span className="rounded-full border border-line-strong px-2 py-0.5 text-xs capitalize text-muted">{member.role}</span>
         )}
       </div>
       {update.error && <ErrorMessage error={update.error} />}
@@ -87,7 +87,7 @@ function MemberRow({ t, member, canManage }: { t: number; member: Member; canMan
         They will lose access to this team.
         {remove.error && <ErrorMessage error={remove.error} />}
       </ConfirmDialog>
-    </div>
+    </li>
   )
 }
 
@@ -104,8 +104,8 @@ function AddMemberForm({ t }: { t: number }) {
   const notFound = add.error instanceof ApiError && add.error.status === 404
 
   return (
-    <form onSubmit={onSubmit} className="card mt-4 max-w-lg space-y-4 p-5">
-      <h2 className="text-sm font-semibold">Add member</h2>
+    <form onSubmit={onSubmit} className="card mt-8 max-w-lg space-y-4 p-5">
+      <h2 className="text-base font-semibold">Add member</h2>
       {add.error && (
         <ErrorMessage
           error={notFound ? 'No user with that email. An instance admin must create the account first.' : add.error}

@@ -17,7 +17,7 @@ export function LoginPage() {
   if (status.isPending || me.isPending) return <Loading />
   if (status.error || me.error) {
     return (
-      <div className="mx-auto max-w-md p-8">
+      <div className="mx-auto max-w-sm px-4 py-10">
         <ErrorMessage error={status.error ?? me.error} />
       </div>
     )
@@ -39,12 +39,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
-      <div className="mb-6 flex justify-center">
+    <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center bg-bg px-4 py-10">
+      <div className="mb-8 flex justify-center">
         <Logo />
       </div>
       <form onSubmit={onSubmit} className="card space-y-4 p-6">
-        <h1 className="text-lg font-semibold">Log in</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Log in</h1>
         <ErrorMessage error={login.error} />
         <TextField label="Email" type="email" value={email} onChange={setEmail} required autoComplete="email" />
         <TextField

@@ -78,9 +78,9 @@ export function MonitorsPage() {
         title={
           <span className="flex flex-wrap items-center gap-3">
             Monitors
-            <span className="flex flex-wrap items-center gap-2.5 text-xs font-normal text-muted">
+            <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-normal text-muted">
               {statuses.map((s) => (
-                <span key={s.key} className="inline-flex items-center gap-1">
+                <span key={s.key} className="inline-flex items-center gap-1.5">
                   <StatusDot status={s.key} />
                   {counts[s.key]} {s.label}
                 </span>
@@ -99,7 +99,7 @@ export function MonitorsPage() {
       {overview.error && <ErrorMessage error={overview.error} />}
 
       {list.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-6 flex flex-wrap items-center gap-2">
           <input
             className="input max-w-xs"
             placeholder="Search by name or target…"
@@ -113,9 +113,8 @@ export function MonitorsPage() {
                 <button
                   key={tg}
                   type="button"
-                  className={`rounded-full border px-2.5 py-1 text-xs ${
-                    tag === tg ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line text-muted hover:text-ink'
-                  }`}
+                  className="chip"
+                  aria-pressed={tag === tg}
                   onClick={() => setTag(tag === tg ? null : tg)}
                 >
                   {tg}
@@ -138,10 +137,10 @@ export function MonitorsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState>No monitors match your filters.</EmptyState>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {groups.map((g) => (
             <section key={g.name}>
-              <h2 className="mb-2 text-sm font-semibold text-muted">{g.name}</h2>
+              <h2 className="mb-2 text-sm font-semibold">{g.name}</h2>
               <div className="card divide-y divide-line">
                 {g.monitors.map((m) => (
                   <MonitorRow key={m.id} t={t} m={m} o={overviewByID.get(m.id)} />
@@ -155,6 +154,23 @@ export function MonitorsPage() {
   )
 }
 
+const stateWord: Record<Status, string | null> = {
+  up: null,
+  down: 'Down',
+  pending: 'Pending',
+  degraded: 'Degraded',
+  maintenance: 'Maintenance',
+}
+
+function Figure({ label, children, mono = false }: { label: string; children: string; mono?: boolean }) {
+  return (
+    <div className="w-[4.5rem] shrink-0 text-right text-xs text-muted">
+      {label}
+      <span className={`block text-sm text-ink ${mono ? 'font-mono' : ''}`}>{children}</span>
+    </div>
+  )
+}
+
 function MonitorRow({ t, m, o }: { t: number; m: Monitor; o?: OverviewItem }) {
   const beats = o?.heartbeats ?? []
   const latest = beats.length > 0 ? beats[beats.length - 1] : undefined
@@ -162,32 +178,32 @@ function MonitorRow({ t, m, o }: { t: number; m: Monitor; o?: OverviewItem }) {
     latest && (latest.status === 'up' || latest.status === 'pending' || latest.status === 'degraded')
       ? `${latest.latency_ms} ms`
       : '—'
+  const word = m.state ? stateWord[m.state.status] : null
   return (
-    <Link to={`/t/${t}/monitors/${m.id}`} className="flex flex-wrap items-center gap-4 px-4 py-3 hover:bg-line/40">
+    <Link
+      to={`/t/${t}/monitors/${m.id}`}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2"
+    >
       <StatusDot status={m.state?.status} />
       <div className="min-w-40 flex-1">
-        <div className="flex items-center gap-2 text-sm font-medium">
+        <div className="flex flex-wrap items-center gap-x-2 text-sm font-medium">
           {m.name}
+          {word && <span className="text-xs font-normal text-muted">{word}</span>}
           {m.paused && (
-            <span className="rounded-full border border-line px-1.5 py-0.5 text-[10px] text-muted">Paused</span>
+            <span className="rounded-full border border-line-strong px-1.5 py-0.5 text-xs font-normal text-muted">Paused</span>
           )}
         </div>
-        <div className="text-xs text-muted">
+        <div className="font-mono text-xs text-muted">
           {m.type} · {targetSummary(m)}
         </div>
       </div>
       <HeartbeatBar beats={beats} slots={50} className="hidden sm:flex" />
-      <div className="w-16 shrink-0 text-right text-xs text-muted">
-        24h
-        <span className="block text-sm text-ink">{formatUptime(o?.uptime_24h)}</span>
-      </div>
-      <div className="w-16 shrink-0 text-right text-xs text-muted">
-        30d
-        <span className="block text-sm text-ink">{formatUptime(o?.uptime_30d)}</span>
-      </div>
-      <div className="w-16 shrink-0 text-right text-xs text-muted">
-        Latency
-        <span className="block text-sm text-ink">{latency}</span>
+      <div className="ml-auto flex flex-wrap justify-end gap-x-3 gap-y-1 max-sm:w-full">
+        <Figure label="24h">{formatUptime(o?.uptime_24h)}</Figure>
+        <Figure label="30d">{formatUptime(o?.uptime_30d)}</Figure>
+        <Figure label="Latency" mono>
+          {latency}
+        </Figure>
       </div>
     </Link>
   )

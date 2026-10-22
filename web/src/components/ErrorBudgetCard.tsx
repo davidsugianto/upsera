@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import uPlot from 'uplot'
 import type { SLODetail, SLOFiring, SLOPoint } from '../api/types'
+import { useThemeTick } from '../hooks/useThemeTick'
 
 const chartHeight = 180
 
@@ -29,17 +30,19 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
   const exhausted = consumed !== undefined && consumed >= 1
   const series = slo.series ?? []
 
+  const bar = exhausted ? 'bg-down tone-dots' : consumed !== undefined && consumed >= 0.75 ? 'bg-pend tone-dots' : 'bg-up'
+
   return (
     <section className="card p-4" aria-labelledby="error-budget-title">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 id="error-budget-title" className="text-sm font-semibold">
+          <h2 id="error-budget-title" className="text-base font-semibold">
             Error budget
           </h2>
           <p className="text-xs text-muted">{`${s.target}% over ${s.window_days} days`}</p>
         </div>
         {status.firing !== 'none' && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-down/50 bg-down/10 px-2 py-0.5 text-xs font-medium text-down">
+          <span className="inline-flex items-center gap-1 rounded-full border border-down/50 bg-down/10 px-2 py-0.5 text-xs font-medium text-down-ink">
             <span aria-hidden="true">▲</span>
             <span>{firingLabel[status.firing]}</span>
           </span>
@@ -50,7 +53,7 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
         <p className="py-4 text-sm text-muted">No checks in the window yet, so there is no SLI to show.</p>
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 rounded-md border border-line sm:grid-cols-4">
             <Stat label="SLI">{pct(status.sli, 3)}</Stat>
             <Stat label="Checks">{`${status.good.toLocaleString()} good of ${status.valid.toLocaleString()}`}</Stat>
             <Stat label="Burn rate 1h">
@@ -62,11 +65,13 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
           </dl>
 
           <div className="mt-4">
-            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2 text-sm">
               <span className="font-medium">
                 {`${pct(consumed)} used`}
                 {exhausted && (
-                  <span className="ml-2 rounded-full bg-down/10 px-2 py-0.5 text-xs font-medium text-down">Exhausted</span>
+                  <span className="ml-2 rounded-full border border-down/50 bg-down/10 px-2 py-0.5 text-xs font-medium text-down-ink">
+                    Exhausted
+                  </span>
                 )}
               </span>
               <span className="text-muted">{`${pct(Math.max(0, 1 - consumed))} remaining`}</span>
@@ -78,12 +83,9 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
               aria-valuemax={100}
               aria-valuenow={Math.round(Math.min(consumed, 1) * 100)}
               aria-valuetext={`${pct(consumed)} used${exhausted ? ', exhausted' : ''}`}
-              className="h-2 overflow-hidden rounded-full bg-line"
+              className="h-2.5 overflow-hidden rounded-full border border-line bg-surface-2"
             >
-              <div
-                className={`h-full rounded-full ${exhausted ? 'bg-down' : consumed >= 0.75 ? 'bg-pend' : 'bg-up'}`}
-                style={{ width: `${Math.min(consumed, 1) * 100}%` }}
-              />
+              <div className={`h-full ${bar}`} style={{ width: `${Math.min(consumed, 1) * 100}%` }} />
             </div>
           </div>
 
@@ -95,18 +97,18 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
                 <summary className="cursor-pointer text-muted">Daily values</summary>
                 <table className="mt-2 w-full">
                   <thead>
-                    <tr className="text-left text-muted">
-                      <th scope="col" className="py-1 font-medium">Day</th>
-                      <th scope="col" className="py-1 text-right font-medium">SLI</th>
-                      <th scope="col" className="py-1 text-right font-medium">Budget used</th>
+                    <tr>
+                      <th scope="col" className="th px-0">Day</th>
+                      <th scope="col" className="th px-0 text-right">SLI</th>
+                      <th scope="col" className="th px-0 text-right">Budget used</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-line">
                     {series.map((p) => (
-                      <tr key={p.day} className="border-t border-line">
-                        <td className="py-1">{p.day}</td>
-                        <td className="py-1 text-right tabular-nums">{p.sli === undefined ? '—' : pct(p.sli, 3)}</td>
-                        <td className="py-1 text-right tabular-nums">{pct(p.budget_consumed)}</td>
+                      <tr key={p.day}>
+                        <td className="py-1.5">{p.day}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.sli === undefined ? '—' : pct(p.sli, 3)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{pct(p.budget_consumed)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -122,9 +124,9 @@ export function ErrorBudgetCard({ slo }: { slo: SLODetail }) {
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="border-line px-3 py-2 max-sm:nth-[n+3]:border-t max-sm:even:border-l sm:not-first:border-l">
       <dt className="text-xs text-muted">{label}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums">{children}</dd>
+      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{children}</dd>
     </div>
   )
 }
@@ -136,6 +138,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
  */
 function BudgetBurndown({ points }: { points: SLOPoint[] }) {
   const wrap = useRef<HTMLDivElement>(null)
+  const theme = useThemeTick()
   const data = useMemo(
     (): uPlot.AlignedData => [
       points.map((p) => Date.parse(`${p.day}T00:00:00`) / 1000),
@@ -148,9 +151,10 @@ function BudgetBurndown({ points }: { points: SLOPoint[] }) {
   useEffect(() => {
     const el = wrap.current
     if (!el) return
-    const muted = cssVar('--muted', '#8E9C94')
-    const line = cssVar('--line', '#1F2833')
-    const axis = { stroke: muted, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 } }
+    const muted = cssVar('--muted', 'gray')
+    const line = cssVar('--line', 'lightgray')
+    const font = `11px ${cssVar('--font-mono', 'monospace')}`
+    const axis = { stroke: muted, font, grid: { stroke: line, width: 1 }, ticks: { stroke: line, width: 1 } }
     const plot = new uPlot(
       {
         width: el.clientWidth || 600,
@@ -166,14 +170,14 @@ function BudgetBurndown({ points }: { points: SLOPoint[] }) {
           { label: 'Day', value: (_u, v) => (v == null ? '—' : new Date(v * 1000).toLocaleDateString()) },
           {
             label: 'Budget used',
-            stroke: cssVar('--accent', '#C2185B'),
+            stroke: cssVar('--accent', 'deeppink'),
             width: 2,
             points: { show: true, size: 6 },
             value: (_u, v) => (v == null ? '—' : `${v.toFixed(0)}%`),
           },
           {
             label: 'Exhausted',
-            stroke: cssVar('--down', '#DC3545'),
+            stroke: cssVar('--down', 'crimson'),
             width: 1,
             dash: [4, 4],
             points: { show: false },
@@ -190,7 +194,7 @@ function BudgetBurndown({ points }: { points: SLOPoint[] }) {
       ro.disconnect()
       plot.destroy()
     }
-  }, [data])
+  }, [data, theme])
 
   return <div ref={wrap} className="w-full" style={{ minHeight: chartHeight }} />
 }

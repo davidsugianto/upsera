@@ -37,3 +37,8 @@ web/dist/app/
 web/openapi.json
 web/tsconfig.tsbuildinfo
 bin/
+
+# Impeccable scratch output (PRODUCT.md, DESIGN.md and .impeccable/surfaces are committed)
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/build/

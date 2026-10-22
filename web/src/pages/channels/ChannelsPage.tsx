@@ -64,29 +64,24 @@ export function ChannelsPage() {
         </EmptyState>
       )}
       {channels.data && channels.data.length > 0 && (
-        <div className="card divide-y divide-line overflow-hidden p-0">
+        <div className="card divide-y divide-line overflow-hidden">
           {channels.data.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{c.name}</span>
+                  <span className="text-sm font-medium">{c.name}</span>
                   <span className="text-xs text-muted">
                     {channelTypes.find((ct) => ct.value === c.type)?.label ?? c.type}
                   </span>
                   {c.is_default && (
-                    <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-ink">Default</span>
+                    <span className="rounded border border-line-strong px-1.5 py-0.5 text-xs text-muted">Default</span>
                   )}
                 </div>
-                {c.config_error && <p className="mt-1 text-xs text-down">{c.config_error}</p>}
+                {c.config_error && <p className="mt-1 text-xs text-down-ink">{c.config_error}</p>}
                 {testResults[c.id] && <p className="mt-1 text-xs text-muted">{testResults[c.id]}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => test(c)}
-                  disabled={testChannel.isPending}
-                >
+                <button type="button" className="btn" onClick={() => test(c)} disabled={testChannel.isPending}>
                   Test
                 </button>
                 {can('editor') && (
@@ -120,7 +115,7 @@ export function ChannelsPage() {
       >
         <p>Deleting a channel fails if a monitor or escalation policy still uses it.</p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}

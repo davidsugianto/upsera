@@ -9,7 +9,7 @@ export function HomePage() {
   const me = useMe()
   if (setup.error || me.error) {
     return (
-      <div className="mx-auto max-w-md p-8">
+      <div className="mx-auto max-w-sm px-4 py-10">
         <ErrorMessage error={setup.error ?? me.error} />
       </div>
     )

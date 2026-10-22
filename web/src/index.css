@@ -1,72 +1,170 @@
 @import "tailwindcss";
 @import "uplot/dist/uPlot.min.css";
 
-/* Palette from docs/upsera-build-plan.html. Brand pink (--accent) is for
-   actions and accents only; status colours use --up/--down/--pend/--maint. */
+/* Fonts ship inside the binary (the CSP allows font-src 'self' only). Latin subset,
+   SIL OFL 1.1: see src/assets/fonts/OFL-*.txt. */
+@font-face {
+  font-family: "Schibsted Grotesk";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("./assets/fonts/schibsted-grotesk-latin-wght-normal.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+}
+
+/* Two-ink proof sheet: cool paper, fluorescent pink (brand) and cobalt (maintenance, selection).
+   Pink is the brand and the primary action; status colours are separate inks and are never pink.
+   --x is the fill (bars, dots, backgrounds); --x-ink is the readable text colour on --surface and
+   --bg. Both pairs pass AA (text 4.5:1). Status is never colour alone: see .tone-* below. */
 :root {
   color-scheme: light;
-  --bg: #F4F7F5; --surface: #FFFFFF; --ink: #111A14; --muted: #5A6B60; --line: #DCE5DF;
-  --accent: #C2185B; --accent-ink: #C2185B; --accent-soft: #FCE4EC;
-  --up: #5CDD8B; --down: #DC3545; --pend: #F8A306; --maint: #1747F5;
+  --bg: #F1F4F1; --surface: #FFFFFF; --surface-2: #F6F8F6;
+  --ink: #101712; --muted: #55645A; --line: #D5DED8; --line-strong: #B4C1B9;
+  --accent: #C2185B; --accent-strong: #A3134B; --accent-ink: #B5154F; --accent-soft: #FBE3EC;
+  --up: #34C26E;   --up-ink: #0F6B38;
+  --down: #D92D3A; --down-ink: #B3202C;
+  --pend: #F2A20C; --pend-ink: #855600;
+  --maint: #2D5BF0; --maint-ink: #1B45C9;
+  --dot: rgb(0 0 0 / 0.42);
+  --hatch: rgb(255 255 255 / 0.7);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #090C10; --surface: #0F141A; --ink: #E4EAE6; --muted: #8E9C94; --line: #1F2833;
-  --accent: #C2185B; --accent-ink: #F06292; --accent-soft: #2A0F1B;
-  --up: #5CDD8B; --down: #E5484D; --pend: #F8A306; --maint: #5B7CFA;
+  --bg: #0B0E12; --surface: #12171D; --surface-2: #171D24;
+  --ink: #E8EDEA; --muted: #93A19A; --line: #232C36; --line-strong: #364250;
+  --accent: #C2185B; --accent-strong: #D81B68; --accent-ink: #F06292; --accent-soft: #2E1020;
+  --up: #5CDD8B;   --up-ink: #6FE59B;
+  --down: #EF5961; --down-ink: #FF7A80;
+  --pend: #F8A306; --pend-ink: #FFB93B;
+  --maint: #5B7CFA; --maint-ink: #8DA6FF;
+  --dot: rgb(0 0 0 / 0.55);
+  --hatch: rgb(0 0 0 / 0.5);
+}
+/* No data-theme attribute = follow the OS. An explicit "light" or "dark" always wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0B0E12; --surface: #12171D; --surface-2: #171D24;
+    --ink: #E8EDEA; --muted: #93A19A; --line: #232C36; --line-strong: #364250;
+    --accent: #C2185B; --accent-strong: #D81B68; --accent-ink: #F06292; --accent-soft: #2E1020;
+    --up: #5CDD8B;   --up-ink: #6FE59B;
+    --down: #EF5961; --down-ink: #FF7A80;
+    --pend: #F8A306; --pend-ink: #FFB93B;
+    --maint: #5B7CFA; --maint-ink: #8DA6FF;
+    --dot: rgb(0 0 0 / 0.55);
+    --hatch: rgb(0 0 0 / 0.5);
+  }
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
   --color-up: var(--up);
+  --color-up-ink: var(--up-ink);
   --color-down: var(--down);
+  --color-down-ink: var(--down-ink);
   --color-pend: var(--pend);
+  --color-pend-ink: var(--pend-ink);
   --color-maint: var(--maint);
+  --color-maint-ink: var(--maint-ink);
   --font-sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @layer base {
   html, body { background: var(--bg); color: var(--ink); }
-  body { font-family: var(--font-sans); font-size: 14px; }
+  body {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  code, kbd, samp, pre { font-family: var(--font-mono); font-size: 0.92em; }
   dialog { color: var(--ink); }
-  dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+  dialog::backdrop { background: rgb(8 10 12 / 0.55); }
+  ::selection { background: var(--accent-soft); color: var(--ink); }
+  input, textarea { caret-color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+  * { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+  a { text-underline-offset: 3px; }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 hover:border-muted disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md bg-[#C2185B] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#AD1457] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:border-accent-strong hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-down hover:bg-line/60 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 py-1.5 text-sm font-medium text-down-ink transition-colors hover:border-down hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+    @apply w-full rounded-md border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent-ink;
   }
+  /* A hairline-ruled module: the only container. Elevation is the border, never a shadow. */
   .card {
     @apply rounded-lg border border-line bg-surface;
   }
   .link {
-    @apply text-accent-ink hover:underline;
+    @apply text-accent-ink underline decoration-accent-ink/30 hover:decoration-accent-ink;
   }
+  /* Small filter or tag chip; pass aria-pressed for the selected state. */
+  .chip {
+    @apply rounded-full border border-line-strong px-2.5 py-1 text-xs text-muted transition-colors hover:text-ink aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent-ink;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-xs font-medium text-muted;
+  }
+}
+
+/* State fills. The fill colour carries the status; the pattern repeats it for anyone who
+   cannot tell the colours apart: solid = up/down, dots = degraded, hatch = maintenance.
+   Put the pattern class next to the bg-* class, e.g. "bg-pend tone-dots". */
+@layer utilities {
+  .tone-dots {
+    background-image: radial-gradient(circle at center, var(--dot) 0 0.7px, transparent 0.9px);
+    background-size: 3px 3px;
+  }
+  .tone-hatch {
+    background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 /* Print: just the page content, black on white. Navigation, buttons and
    form controls are hidden; tables get visible borders. */
 @media print {
-  :root, :root[data-theme="dark"] {
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
     color-scheme: light;
-    --bg: #FFFFFF; --surface: #FFFFFF; --ink: #000000; --muted: #333333; --line: #000000;
+    --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #FFFFFF; --ink: #000000; --muted: #333333; --line: #000000;
   }
   html, body { background: #FFFFFF; color: #000000; }
   aside, nav, header, button, input, select { display: none !important; }

@@ -494,14 +494,14 @@ var resultTmpl = template.Must(template.New("result").Parse(`<!doctype html>
 <meta name="robots" content="noindex">
 <title>{{.Title}}{{with .Page}} · {{.Title}}{{end}}</title>
 <style>
-:root{color-scheme:light dark;--bg:#F4F7F5;--surface:#FFFFFF;--ink:#111A14;--muted:#5B665F;--line:#D8E0DB;--brand:#C2185B;--link:#C2185B}
-@media (prefers-color-scheme:dark){:root{--bg:#090C10;--surface:#0F141A;--ink:#E4EAE6;--muted:#9AA6A0;--line:#222B33;--link:#F06292}}
+:root{color-scheme:light dark;--bg:#F1F4F1;--surface:#FFFFFF;--ink:#101712;--muted:#55645A;--line:#D5DED8;--brand:#C2185B;--link:#B5154F}
+@media (prefers-color-scheme:dark){:root{--bg:#0B0E12;--surface:#12171D;--ink:#E8EDEA;--muted:#93A19A;--line:#232C36;--link:#F06292}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px}
-main{background:var(--surface);border:1px solid var(--line);border-radius:12px;max-width:480px;width:100%;padding:24px}
+main{background:var(--surface);border:1px solid var(--line);border-radius:8px;max-width:480px;width:100%;padding:24px}
 h1{font-size:1.25rem;margin:0 0 8px}
 p{margin:0 0 16px;color:var(--muted)}
-button{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+button{background:var(--brand);color:#fff;border:0;border-radius:6px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
 button:focus-visible,a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
 a{color:var(--link)}
 .back{margin:16px 0 0;font-size:.9rem}

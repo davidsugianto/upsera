@@ -50,16 +50,16 @@ export function StatusPagesPage() {
         </EmptyState>
       )}
       {pages.data && pages.data.length > 0 && (
-        <div className="card divide-y divide-line overflow-hidden p-0">
+        <ul className="card divide-y divide-line overflow-hidden p-0">
           {pages.data.map((p) => (
-            <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{p.title}</span>
+                  <span className="text-base font-semibold">{p.title}</span>
                   {p.published ? (
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent-ink">Published</span>
+                    <span className="rounded-full border border-up/50 px-2 py-0.5 text-xs text-up-ink"><span aria-hidden="true">● </span>Published</span>
                   ) : (
-                    <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">Draft</span>
+                    <span className="rounded-full border border-line-strong px-2 py-0.5 text-xs text-muted"><span aria-hidden="true">○ </span>Draft</span>
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
@@ -98,9 +98,9 @@ export function StatusPagesPage() {
                   </>
                 )}
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       <ConfirmDialog
         open={confirming !== null}
@@ -114,7 +114,7 @@ export function StatusPagesPage() {
           undone.
         </p>
         {deleteError && (
-          <p role="alert" className="mt-2 text-down">
+          <p role="alert" className="mt-2 text-down-ink">
             {deleteError}
           </p>
         )}

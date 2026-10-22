@@ -77,7 +77,7 @@ export function MonitorDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <PageHeader
           title={
@@ -86,7 +86,7 @@ export function MonitorDetailPage() {
               <StatusBadge status={m.state?.status} />
               {m.state && <span className="text-xs font-normal text-muted">since {formatTime(m.state.since)}</span>}
               {(m.state?.flap_count ?? 0) >= 5 && (
-                <span className="rounded-full bg-pend/10 px-2 py-0.5 text-xs font-normal text-pend">Flapping</span>
+                <span className="rounded-full border border-pend/50 bg-pend/10 px-2 py-0.5 text-xs font-normal text-pend-ink">Flapping</span>
               )}
             </span>
           }
@@ -105,49 +105,50 @@ export function MonitorDetailPage() {
             </>
           )}
         </PageHeader>
-        <p className="text-sm text-muted">
+        <p className="font-mono text-xs text-muted">
           {m.type} · {targetSummary(m)}
           {m.state?.tls_expires_at && <> · TLS expires {formatTime(m.state.tls_expires_at)}</>}
         </p>
         {m.type === 'push' && m.push_url && (
           <div className="mt-2 flex items-center gap-2">
-            <code className="rounded-md border border-line bg-bg px-2 py-1 text-xs">{m.push_url}</code>
+            <code className="rounded-md border border-line bg-surface-2 px-2 py-1 text-xs break-all">{m.push_url}</code>
             <CopyButton text={m.push_url} />
           </div>
         )}
         <ErrorMessage error={save.error} />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <UptimeCard label="24h uptime" value={uptime.data?.uptime_24h} />
-        <UptimeCard label="7d uptime" value={uptime.data?.uptime_7d} />
-        <UptimeCard label="30d uptime" value={uptime.data?.uptime_30d} />
-      </div>
+      <section className="card grid grid-cols-3 divide-x divide-line" aria-label="Uptime">
+        <UptimeCell label="24h uptime" value={uptime.data?.uptime_24h} />
+        <UptimeCell label="7d uptime" value={uptime.data?.uptime_7d} />
+        <UptimeCell label="30d uptime" value={uptime.data?.uptime_30d} />
+      </section>
 
       {slo.data && <ErrorBudgetCard slo={slo.data} />}
       <ErrorMessage error={slo.error} />
 
       {regionStateRows.length > 0 && (
         <section className="card">
-          <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">Regions</h2>
+          <h2 className="border-b border-line px-4 py-3 text-base font-semibold">Regions</h2>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs text-muted">
-                <th className="px-4 py-2 font-medium">Region</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium">Latency</th>
-                <th className="px-4 py-2 font-medium">Last result</th>
-                <th className="px-4 py-2 font-medium">Message</th>
+            <thead className="bg-surface-2">
+              <tr>
+                <th scope="col" className="th px-4">Region</th>
+                <th scope="col" className="th px-4">Status</th>
+                <th scope="col" className="th px-4">Latency</th>
+                <th scope="col" className="th px-4">Last result</th>
+                <th scope="col" className="th px-4">Message</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {regionStateRows.map(({ region, state }) => (
-                <tr key={region} className="border-b border-line last:border-0">
+                <tr key={region}>
                   <td className="px-4 py-2 font-mono text-xs">{region}</td>
                   <td className="px-4 py-2">
                     <StatusBadge status={state.status} />
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap">{state.last_result_at ? `${state.latency_ms} ms` : '—'}</td>
+                  <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{state.last_result_at ? `${state.latency_ms} ms` : '—'}</td>
                   <td className="px-4 py-2 whitespace-nowrap text-muted" title={formatTime(state.last_result_at)}>
                     {state.last_result_at ? formatAge(now - Date.parse(state.last_result_at)) : 'no result yet'}
                   </td>
@@ -156,6 +157,7 @@ export function MonitorDetailPage() {
               ))}
             </tbody>
           </table>
+          </div>
           {m.quorum !== undefined && regionStateRows.length > 1 && (
             <p className="border-t border-line px-4 py-2 text-xs text-muted">
               Down when {m.quorum} of {regionStateRows.length} regions report down.
@@ -165,16 +167,15 @@ export function MonitorDetailPage() {
       )}
 
       <section className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Latency</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Latency</h2>
           <div className="flex gap-1.5">
             {(Object.keys(ranges) as Range[]).map((r) => (
               <button
                 key={r}
                 type="button"
-                className={`rounded-full border px-2.5 py-1 text-xs ${
-                  range === r ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line text-muted hover:text-ink'
-                }`}
+                className="chip"
+                aria-pressed={range === r}
                 onClick={() => setRange(r)}
               >
                 {r}
@@ -186,18 +187,18 @@ export function MonitorDetailPage() {
       </section>
 
       <section className="card p-4">
-        <h2 className="mb-3 text-sm font-semibold">Recent heartbeats</h2>
-        {bar.isPending ? <Loading /> : <HeartbeatBar beats={barBeats} slots={100} />}
+        <h2 className="mb-3 text-base font-semibold">Recent heartbeats</h2>
+        {bar.isPending ? <Loading /> : <div className="overflow-x-auto"><HeartbeatBar beats={barBeats} slots={100} /></div>}
       </section>
 
       <section className="card">
-        <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">Open alerts</h2>
+        <h2 className="border-b border-line px-4 py-3 text-base font-semibold">Open alerts</h2>
         {openAlerts.isPending ? (
           <Loading />
         ) : (openAlerts.data ?? []).length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted">No open alerts.</p>
         ) : (
-          <div>
+          <div className="divide-y divide-line">
             {(openAlerts.data ?? []).map((a) => (
               <AlertRow key={a.id} t={t} monitorId={id} alert={a} canAck={can('editor')} />
             ))}
@@ -206,23 +207,24 @@ export function MonitorDetailPage() {
       </section>
 
       <section className="card">
-        <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">Event history</h2>
+        <h2 className="border-b border-line px-4 py-3 text-base font-semibold">Event history</h2>
         {events.isPending ? (
           <Loading />
         ) : (events.data ?? []).length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted">No events yet.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs text-muted">
-                <th className="px-4 py-2 font-medium">Time</th>
-                <th className="px-4 py-2 font-medium">Change</th>
-                <th className="px-4 py-2 font-medium">Message</th>
+            <thead className="bg-surface-2">
+              <tr>
+                <th scope="col" className="th px-4">Time</th>
+                <th scope="col" className="th px-4">Change</th>
+                <th scope="col" className="th px-4">Message</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {(events.data ?? []).map((ev, i) => (
-                <tr key={i} className="border-b border-line last:border-0">
+                <tr key={i}>
                   <td className="px-4 py-2 whitespace-nowrap">{formatTime(ev.time)}</td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     <span className="inline-flex items-center gap-1.5">
@@ -238,6 +240,7 @@ export function MonitorDetailPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -254,11 +257,11 @@ export function MonitorDetailPage() {
   )
 }
 
-function UptimeCard({ label, value }: { label: string; value: number | null | undefined }) {
+function UptimeCell({ label, value }: { label: string; value: number | null | undefined }) {
   return (
-    <div className="card p-4">
+    <div className="px-4 py-3">
       <div className="text-xs text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{formatUptime(value)}</div>
+      <div className="mt-0.5 text-lg font-semibold">{formatUptime(value)}</div>
     </div>
   )
 }
@@ -292,20 +295,20 @@ function AlertRow({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 last:border-0">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div>
         <div className="text-sm font-medium">
           Step {alert.step} · opened {formatTime(alert.opened_at)}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-          {alert.suppressed && <span className="rounded-full bg-line px-2 py-0.5">Suppressed</span>}
-          {alert.flapping && <span className="rounded-full bg-line px-2 py-0.5">Flapping</span>}
+          {alert.suppressed && <span className="rounded-full border border-line-strong px-2 py-0.5">Suppressed</span>}
+          {alert.flapping && <span className="rounded-full border border-line-strong px-2 py-0.5">Flapping</span>}
           <span className="text-muted">
             {alert.acked ? `Acked by ${alert.acked_by_name || 'unknown'} at ${formatTime(alert.acked_at)}` : 'Not acknowledged'}
           </span>
         </div>
         {alert.message && <p className="mt-1 text-xs text-muted">{alert.message}</p>}
-        {localError && <p className="mt-1 text-xs text-down">{localError}</p>}
+        {localError && <p className="mt-1 text-xs text-down-ink">{localError}</p>}
       </div>
       {canAck && !alert.acked && (
         <button type="button" className="btn" onClick={acknowledge} disabled={ack.isPending}>

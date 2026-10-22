@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import {
   useChannels,
@@ -37,22 +37,57 @@ import {
 
 const noneOption = { value: '', label: 'None' }
 
+/** Module is one hairline group of the form: a heading and a two-column grid that collapses on phones. */
+function Module({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="card p-4">
+      <h2 className="mb-4 text-base font-semibold text-balance">{title}</h2>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </section>
+  )
+}
+
+const wide = 'sm:col-span-2'
+
 /** SLOForm is the monitor form's service level objective section. */
-export type SLOForm = { enabled: boolean; target: number; window_days: number; fast_burn: number; slow_burn: number }
+export type SLOForm = {
+  enabled: boolean
+  target: number
+  window_days: number
+  fast_burn: number
+  slow_burn: number
+}
 
 /** defaultSLOForm is off, with the server's defaults ready for when it is turned on. */
 export function defaultSLOForm(): SLOForm {
-  return { enabled: false, target: 99.9, window_days: 30, fast_burn: 14.4, slow_burn: 6 }
+  return {
+    enabled: false,
+    target: 99.9,
+    window_days: 30,
+    fast_burn: 14.4,
+    slow_burn: 6,
+  }
 }
 
 /** sloToForm loads an existing SLO into the form (null: the monitor has none). */
 export function sloToForm(slo: SLO | null | undefined): SLOForm {
   if (!slo) return defaultSLOForm()
-  return { enabled: true, target: slo.target, window_days: slo.window_days, fast_burn: slo.fast_burn, slow_burn: slo.slow_burn }
+  return {
+    enabled: true,
+    target: slo.target,
+    window_days: slo.window_days,
+    fast_burn: slo.fast_burn,
+    slow_burn: slo.slow_burn,
+  }
 }
 
 export function sloFormToInput(f: SLOForm): SLOInput {
-  return { target: f.target, window_days: f.window_days, fast_burn: f.fast_burn, slow_burn: f.slow_burn }
+  return {
+    target: f.target,
+    window_days: f.window_days,
+    fast_burn: f.fast_burn,
+    slow_burn: f.slow_burn,
+  }
 }
 
 /**
@@ -128,8 +163,17 @@ function MonitorEditor({
     noneOption,
     ...(monitors.data ?? []).filter((m) => m.id !== editingId).map((m) => ({ value: String(m.id), label: m.name })),
   ]
-  const policyOptions = [noneOption, ...(policies.data ?? []).map((p) => ({ value: String(p.id), label: p.name }))]
-  const channelOptions = (channels.data ?? []).map((c) => ({ value: c.id, label: `${c.name} (${c.type})` }))
+  const policyOptions = [
+    noneOption,
+    ...(policies.data ?? []).map((p) => ({
+      value: String(p.id),
+      label: p.name,
+    })),
+  ]
+  const channelOptions = (channels.data ?? []).map((c) => ({
+    value: c.id,
+    label: `${c.name} (${c.type})`,
+  }))
 
   const set = <K extends keyof MonitorForm>(key: K, value: MonitorForm[K]) => setForm((f) => ({ ...f, [key]: value }))
 
@@ -154,7 +198,10 @@ function MonitorEditor({
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const localErrors = { ...validateMonitorForm(form), ...validateSLOForm(slo) }
+    const localErrors = {
+      ...validateMonitorForm(form),
+      ...validateSLOForm(slo),
+    }
     setErrors(localErrors)
     if (Object.keys(localErrors).length > 0) return
     saveSLO.reset()
@@ -166,7 +213,11 @@ function MonitorEditor({
           setSavedId(m.id)
           try {
             // The SLO is saved after its monitor (a new monitor has no id before).
-            if (slo.enabled) await saveSLO.mutateAsync({ id: m.id, body: sloFormToInput(slo) })
+            if (slo.enabled)
+              await saveSLO.mutateAsync({
+                id: m.id,
+                body: sloFormToInput(slo),
+              })
             else if (initialSLO.enabled) await deleteSLO.mutateAsync(m.id)
           } catch {
             return // shown below; the monitor itself is saved
@@ -182,31 +233,36 @@ function MonitorEditor({
   const busy = save.isPending || saveSLO.isPending || deleteSLO.isPending
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       <PageHeader title={isEdit ? `Edit ${form.name || 'monitor'}` : 'Add monitor'} />
-      <form onSubmit={submit} className="card space-y-5 p-5">
+      <form onSubmit={submit} className="space-y-6">
         <ErrorMessage error={save.error} />
 
-        {!isEdit && (
-          <Select
-            label="Type"
-            value={form.type}
-            onChange={(v) => changeType(v as MonitorType)}
-            options={monitorTypes.map((mt) => ({ value: mt.value, label: mt.label }))}
+        <Module title="Monitor">
+          {!isEdit && (
+            <Select
+              label="Type"
+              value={form.type}
+              onChange={(v) => changeType(v as MonitorType)}
+              options={monitorTypes.map((mt) => ({
+                value: mt.value,
+                label: mt.label,
+              }))}
+            />
+          )}
+
+          <TextField label="Name" value={form.name} onChange={(v) => set('name', v)} required error={err('name')} />
+          <TextField
+            label="Group"
+            value={form.group_name}
+            onChange={(v) => set('group_name', v)}
+            placeholder="Ungrouped"
+            help="Monitors with the same group are shown together on the list."
           />
-        )}
+          <TagInput label="Tags" value={form.tags} onChange={(v) => set('tags', v)} />
+        </Module>
 
-        <TextField label="Name" value={form.name} onChange={(v) => set('name', v)} required error={err('name')} />
-        <TextField
-          label="Group"
-          value={form.group_name}
-          onChange={(v) => set('group_name', v)}
-          placeholder="Ungrouped"
-          help="Monitors with the same group are shown together on the list."
-        />
-        <TagInput label="Tags" value={form.tags} onChange={(v) => set('tags', v)} />
-
-        <div className="grid grid-cols-2 gap-4">
+        <Module title="Schedule">
           <NumberField
             label="Check interval (s)"
             value={form.interval_s}
@@ -236,47 +292,53 @@ function MonitorEditor({
             min={1}
             error={err('timeout_s')}
           />
-        </div>
+        </Module>
 
         <TypeFields form={form} set={set} err={err} />
 
         <RegionFields form={form} setForm={setForm} err={err} />
 
-        <Select
-          label="Parent monitor"
-          value={form.parentId}
-          onChange={(v) => set('parentId', v)}
-          options={parentOptions}
-          help="Skip checks while the parent is down."
-          error={err('parent_id')}
-        />
-        <Select
-          label="Escalation policy"
-          value={form.policyId}
-          onChange={(v) => set('policyId', v)}
-          options={policyOptions}
-          error={err('escalation_policy_id')}
-        />
-        <MultiCheck
-          label="Channels"
-          value={form.channelIds}
-          onChange={(v) => set('channelIds', v)}
-          options={channelOptions}
-          error={err('channel_ids')}
-          help="Used when no escalation policy is set; none = team default channels"
-          empty="No channels yet."
-        />
-
-        <Checkbox label="Paused" checked={form.paused} onChange={(v) => set('paused', v)} />
+        <Module title="Alerting">
+          <Select
+            label="Parent monitor"
+            value={form.parentId}
+            onChange={(v) => set('parentId', v)}
+            options={parentOptions}
+            help="Skip checks while the parent is down."
+            error={err('parent_id')}
+          />
+          <Select
+            label="Escalation policy"
+            value={form.policyId}
+            onChange={(v) => set('policyId', v)}
+            options={policyOptions}
+            error={err('escalation_policy_id')}
+          />
+          <div className={wide}>
+            <MultiCheck
+              label="Channels"
+              value={form.channelIds}
+              onChange={(v) => set('channelIds', v)}
+              options={channelOptions}
+              error={err('channel_ids')}
+              help="Used when no escalation policy is set; none = team default channels"
+              empty="No channels yet."
+            />
+          </div>
+          <div className={wide}>
+            <Checkbox label="Paused" checked={form.paused} onChange={(v) => set('paused', v)} />
+          </div>
+        </Module>
 
         <SLOFields slo={slo} setSLO={setSLO} err={sloErr} readOnly={!can('editor')} />
         {(saveSLO.error || deleteSLO.error) && (
-          <p role="alert" className="rounded-md border border-down/40 bg-down/10 px-3 py-2 text-sm text-down">
-            The monitor was saved, but its service level objective was not: {errorText(saveSLO.error ?? deleteSLO.error)}
+          <p role="alert" className="rounded-md border border-down/50 bg-down/10 px-3 py-2 text-sm text-down-ink">
+            The monitor was saved, but its service level objective was not:{' '}
+            {errorText(saveSLO.error ?? deleteSLO.error)}
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="sticky bottom-0 z-10 flex justify-end gap-2 border-t border-line bg-bg py-3">
           <button type="button" className="btn" onClick={() => navigate(-1)}>
             Cancel
           </button>
@@ -302,8 +364,9 @@ function TypeFields({
     case 'http':
     case 'keyword':
       return (
-        <div className="space-y-5 border-t border-line pt-5">
+        <Module title={form.type === 'keyword' ? 'Keyword check' : 'HTTP request'}>
           <TextField
+            className={`${wide} [&_input]:font-mono`}
             label="URL"
             type="url"
             value={form.http.url}
@@ -318,13 +381,16 @@ function TypeFields({
             onChange={(v) => set('http', { ...form.http, method: v })}
             options={httpMethods.map((m) => ({ value: m, label: m }))}
           />
-          <KeyValueEditor
-            label="Headers"
-            value={form.http.headers}
-            onChange={(v) => set('http', { ...form.http, headers: v })}
-          />
+          <div className={wide}>
+            <KeyValueEditor
+              label="Headers"
+              value={form.http.headers}
+              onChange={(v) => set('http', { ...form.http, headers: v })}
+            />
+          </div>
           {methodsWithBody.includes(form.http.method) && (
             <TextField
+              className={wide}
               label="Body"
               value={form.http.body}
               onChange={(v) => set('http', { ...form.http, body: v })}
@@ -344,11 +410,13 @@ function TypeFields({
             onChange={(v) => set('http', { ...form.http, max_redirects: v })}
             min={0}
           />
-          <Checkbox
-            label="Ignore TLS errors"
-            checked={form.http.ignore_tls_errors}
-            onChange={(v) => set('http', { ...form.http, ignore_tls_errors: v })}
-          />
+          <div className={wide}>
+            <Checkbox
+              label="Ignore TLS errors"
+              checked={form.http.ignore_tls_errors}
+              onChange={(v) => set('http', { ...form.http, ignore_tls_errors: v })}
+            />
+          </div>
           {form.type === 'keyword' && (
             <>
               <TextField
@@ -358,24 +426,27 @@ function TypeFields({
                 required
                 error={err('config.keyword')}
               />
-              <Checkbox
-                label="Invert (alert when the keyword is present)"
-                checked={form.keyword.invert_keyword}
-                onChange={(v) => set('keyword', { ...form.keyword, invert_keyword: v })}
-              />
-              <Checkbox
-                label="Case sensitive"
-                checked={form.keyword.case_sensitive}
-                onChange={(v) => set('keyword', { ...form.keyword, case_sensitive: v })}
-              />
+              <div className={`${wide} space-y-2`}>
+                <Checkbox
+                  label="Invert (alert when the keyword is present)"
+                  checked={form.keyword.invert_keyword}
+                  onChange={(v) => set('keyword', { ...form.keyword, invert_keyword: v })}
+                />
+                <Checkbox
+                  label="Case sensitive"
+                  checked={form.keyword.case_sensitive}
+                  onChange={(v) => set('keyword', { ...form.keyword, case_sensitive: v })}
+                />
+              </div>
             </>
           )}
-        </div>
+        </Module>
       )
     case 'tcp':
       return (
-        <div className="grid grid-cols-2 gap-4 border-t border-line pt-5">
+        <Module title="TCP connection">
           <TextField
+            className="[&_input]:font-mono"
             label="Host"
             value={form.tcp.host}
             onChange={(v) => set('tcp', { ...form.tcp, host: v })}
@@ -389,12 +460,13 @@ function TypeFields({
             required
             error={err('config.port')}
           />
-        </div>
+        </Module>
       )
     case 'ping':
       return (
-        <div className="grid grid-cols-2 gap-4 border-t border-line pt-5">
+        <Module title="Ping">
           <TextField
+            className="[&_input]:font-mono"
             label="Host"
             value={form.ping.host}
             onChange={(v) => set('ping', { ...form.ping, host: v })}
@@ -409,12 +481,13 @@ function TypeFields({
             max={10}
             error={err('config.count')}
           />
-        </div>
+        </Module>
       )
     case 'dns':
       return (
-        <div className="space-y-5 border-t border-line pt-5">
+        <Module title="DNS lookup">
           <TextField
+            className="[&_input]:font-mono"
             label="Hostname"
             value={form.dns.hostname}
             onChange={(v) => set('dns', { ...form.dns, hostname: v })}
@@ -428,6 +501,7 @@ function TypeFields({
             options={dnsRecordTypes.map((r) => ({ value: r, label: r }))}
           />
           <TextField
+            className="[&_input]:font-mono"
             label="Resolver"
             value={form.dns.resolver}
             onChange={(v) => set('dns', { ...form.dns, resolver: v })}
@@ -436,6 +510,7 @@ function TypeFields({
             error={err('config.resolver')}
           />
           <TextField
+            className="[&_input]:font-mono"
             label="Expected value"
             value={form.dns.expected}
             onChange={(v) => set('dns', { ...form.dns, expected: v })}
@@ -443,16 +518,18 @@ function TypeFields({
             help="Optional; alert unless a record matches this value."
             error={err('config.expected')}
           />
-        </div>
+        </Module>
       )
     case 'docker':
       return <DockerFields form={form} set={set} err={err} />
     case 'push':
       return (
-        <p className="border-t border-line pt-5 text-sm text-muted">
-          A push URL is issued once the monitor is created. Send a request to it on your own schedule to report
-          liveness.
-        </p>
+        <Module title="Push">
+          <p className={`${wide} text-sm text-muted`}>
+            A push URL is issued once the monitor is created. Send a request to it on your own schedule to report
+            liveness.
+          </p>
+        </Module>
       )
   }
 }
@@ -473,19 +550,30 @@ function DockerFields({
   const hostId = form.docker.hostId === '' ? undefined : Number(form.docker.hostId)
   const containers = useDockerContainers(t, hostId)
   const hostOptions = [
-    { value: '', label: hosts.data && hosts.data.length === 0 ? 'No Docker hosts yet' : 'Choose a host…' },
-    ...(hosts.data ?? []).map((h) => ({ value: String(h.id), label: `${h.name} (${h.endpoint})` })),
+    {
+      value: '',
+      label: hosts.data && hosts.data.length === 0 ? 'No Docker hosts yet' : 'Choose a host…',
+    },
+    ...(hosts.data ?? []).map((h) => ({
+      value: String(h.id),
+      label: `${h.name} (${h.endpoint})`,
+    })),
   ]
   const hostError = err('config.docker_host_id')
   const containerError = err('config.container')
   const running = new Set((containers.data ?? []).filter((c) => c.state === 'running').map((c) => c.name))
 
   return (
-    <div className="space-y-5 border-t border-line pt-5">
+    <Module title="Docker container">
       <Select
         label="Docker host"
         value={form.docker.hostId}
-        onChange={(v) => set('docker', { hostId: v, container: v === form.docker.hostId ? form.docker.container : '' })}
+        onChange={(v) =>
+          set('docker', {
+            hostId: v,
+            container: v === form.docker.hostId ? form.docker.container : '',
+          })
+        }
         options={hostOptions}
         error={hostError}
         help={
@@ -504,7 +592,7 @@ function DockerFields({
         </label>
         <input
           id={`${listId}-input`}
-          className="input"
+          className="input font-mono"
           list={listId}
           value={form.docker.container}
           placeholder={hostId === undefined ? 'Choose a host first' : 'Search or type a container name'}
@@ -519,7 +607,7 @@ function DockerFields({
             </option>
           ))}
         </datalist>
-        {containerError && <p className="mt-1 text-xs text-down">{containerError}</p>}
+        {containerError && <p className="mt-1 text-xs text-down-ink">{containerError}</p>}
         {!containerError && containers.error && (
           <p className="mt-1 text-xs text-muted">
             Could not list containers from this host; you can still type a container name or id.
@@ -533,11 +621,11 @@ function DockerFields({
           </p>
         )}
       </div>
-      <p className="text-xs text-muted">
+      <p className={`${wide} text-xs text-muted`}>
         UP while the container runs (and its healthcheck, if it has one, is healthy). Alerts say why: for example
         &quot;exited (137)&quot; or &quot;unhealthy&quot;.
       </p>
-    </div>
+    </Module>
   )
 }
 
@@ -555,14 +643,14 @@ function RegionFields({
 
   if (!canRunRemotely(form.type)) {
     return (
-      <div className="border-t border-line pt-5">
-        <div className="text-sm font-medium">Regions</div>
-        <p className="mt-1 text-xs text-muted">
+      <section className="card p-4">
+        <h2 className="text-base font-semibold text-balance">Regions</h2>
+        <p className="mt-2 text-xs text-muted">
           {form.type === 'push'
             ? 'Push monitors are reported by your own jobs, so they are not checked from probe regions.'
             : 'Docker monitors read the container state from the Docker host, so they always run on this server.'}
         </p>
-      </div>
+      </section>
     )
   }
 
@@ -577,15 +665,15 @@ function RegionFields({
   const n = form.regions.length
 
   return (
-    <div className="space-y-3 border-t border-line pt-5">
+    <section className="card space-y-4 p-4">
       <fieldset>
-        <legend className="mb-1 block text-sm font-medium">Regions</legend>
+        <legend className="mb-3 block text-base font-semibold">Regions</legend>
         {regions.isPending ? (
           <p className="text-sm text-muted">Loading regions…</p>
         ) : regions.error ? (
           <ErrorMessage error={regions.error} />
         ) : (
-          <div className="grid gap-1.5 rounded-md border border-line p-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {options.map((r) => (
               <Checkbox
                 key={r.name}
@@ -603,7 +691,7 @@ function RegionFields({
           </div>
         )}
         {err('regions') ? (
-          <p className="mt-1 text-xs text-down">{err('regions')}</p>
+          <p className="mt-1 text-xs text-down-ink">{err('regions')}</p>
         ) : (
           <p className="mt-1 text-xs text-muted">
             The monitor is checked from every selected region. Probes are added by an instance admin.
@@ -626,7 +714,7 @@ function RegionFields({
           }
         />
       )}
-    </div>
+    </section>
   )
 }
 
@@ -647,9 +735,9 @@ function SLOFields({
 }) {
   const set = <K extends keyof SLOForm>(key: K, value: SLOForm[K]) => setSLO((f) => ({ ...f, [key]: value }))
   return (
-    <fieldset className="space-y-4 border-t border-line pt-5" disabled={readOnly}>
+    <fieldset className="card space-y-4 p-4" disabled={readOnly}>
       <legend className="sr-only">Service level objective</legend>
-      <div className="text-sm font-medium" aria-hidden="true">
+      <div className="text-base font-semibold" aria-hidden="true">
         Service level objective
       </div>
       <Checkbox
@@ -660,7 +748,7 @@ function SLOFields({
       />
       {slo.enabled && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <NumberField
               label="Target (%)"
               value={slo.target}
@@ -682,7 +770,7 @@ function SLOFields({
           </div>
           <details className="rounded-md border border-line px-3 py-2">
             <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-            <div className="mt-3 grid grid-cols-2 gap-4">
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <NumberField
                 label="Fast burn threshold"
                 value={slo.fast_burn}
